@@ -11,6 +11,13 @@
 
 任何 NPC、AI Agent 或代码助手不得自行修改核心玩法、视觉方向、
 技术架构、接口约定和验收标准。发现问题时应先提出建议，等待人工确认。
+### 美术与视觉规范优先级 
+涉及 v0.1 第一张地图、人物、NPC、机器人、HUD、图标、特效和美术资产时， 以 `14_ART_DIRECTION_BIBLE.md` 为当前最高优先级的美术规范。 `03_VISUAL_UX_DIRECTION.md` 负责总体视觉与交互原则， `14_ART_DIRECTION_BIBLE.md` 负责 v0.1 第一张地图及相关资产的具体实现约束。
+如两份文档存在冲突：
+
+- 交互流程和信息架构问题以 `03_VISUAL_UX_DIRECTION.md` 为准；
+- 地图、人物、材质、色彩、光照和资产规范以 `14_ART_DIRECTION_BIBLE.md` 为准；
+- 无法判断时必须停止修改并提交人工确认。
 
 
 # 《生态播种者》v0.1 协同开发文档集
@@ -90,6 +97,8 @@ v0.1 的目标不是做完完整商业游戏，而是交付一个能够证明下
 | `09_ACCEPTANCE_AND_TESTING.md` | 功能验收、视觉验收、性能、测试和演示脚本 |
 | `10_INTRO_VIDEO_SCRIPT.md` | 20—30 秒概念视频分镜与文案 |
 | `11_SHARED_AGENT_CONTEXT.md` | 供 CodeBuddy 和 CNB NPC 读取的统一项目上下文 |
+
+|- [14 Eco Seeder v0.1 美术方向与资产规范（第一张地图范围）](./14_ART_DIRECTION_BIBLE_v0.1.md)
 
 ---
 

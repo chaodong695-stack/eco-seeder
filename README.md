@@ -18,6 +18,7 @@
 - [开发任务清单](docs/07-development-task-list.md)
 - [测试与验收标准](docs/08-testing-and-acceptance.md)
 - [部署与运维](docs/09-deployment-and-operations.md)
+- [v0.1 美术方向与资产规范](ecoseeder_docs/14_ART_DIRECTION_BIBLE_v0.1.md)
 
 ## 开发原则
 

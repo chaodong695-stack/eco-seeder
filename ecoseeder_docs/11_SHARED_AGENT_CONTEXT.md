@@ -34,6 +34,7 @@ map.urban_wasteland
 8. React 负责 UI，Phaser 负责场景。
 9. mock 社交和 mock AI 必须通过接口实现。
 10. 不为了 MVP 把内容写死。
+11. 任何 Agent 在处理地图、人物、NPC、机器人、UI、图标、特效或美术资源前， 必须先阅读 `14_ART_DIRECTION_BIBLE.md`。 Agent 不得将 AI 生成的完整游戏截图直接作为正式地图资源， 不得自行改变既定美术方向。
 
 ---
 

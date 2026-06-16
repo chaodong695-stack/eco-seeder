@@ -47,6 +47,7 @@ NPC 提案
 - ecoseeder_docs/04_TECHNICAL_ARCHITECTURE.md
 - ecoseeder_docs/05_INTERFACE_CONTRACTS.md
 - ecoseeder_docs/09_ACCEPTANCE_AND_TESTING.md
+- ecoseeder_docs/14_ART_DIRECTION_BIBLE_v0.1.md
 
 如确需修改，必须先在 Issue 中说明：
 
@@ -67,3 +68,4 @@ NPC 每次执行任务时必须说明：
 5. 创建或修改了哪些文件；
 6. 如何验证结果；
 7. 是否存在未解决的问题。
+8. NPC 发现美术规范存在问题时，只能在 Issue 中提出修改建议。 未经项目负责人确认，NPC 不得： - 修改整体美术方向； - 将概念图直接作为正式资产； - 替换已经确认的地图风格； - 将 UI、文字和人物绘制进地图背景； - 扩大 v0.1 美术资产范围。
