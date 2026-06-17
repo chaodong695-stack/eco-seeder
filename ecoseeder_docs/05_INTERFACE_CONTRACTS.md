@@ -141,14 +141,13 @@ interface MapDefinition extends BaseEntity {
 `MapDefinition` 继承的 `BaseEntity.id` 直接作为地图 ID 使用，不再单独定义 `mapId`。
 
 v0.1 的地图身份固定为：
-
-| 字段                | 固定值                                     | 含义                |
-| ----------------- | --------------------------------------- | ----------------- |
-| `id`              | `map.urban_wasteland`                   | 程序内部地图 ID         |
-| `sceneKey`        | `UrbanWastelandScene`                   | Phaser 场景注册键      |
-| `displayName`     | `雾港旧工业区`                                | 玩家看到的正式地图名称       |
-| `type`            | `urban_wasteland`                       | 地图主题分类，对应“城市污染荒地” |
-| `primaryRegionId` | `region.industrial_wetland_restoration` | 主要可玩区域 ID         |
+| 字段 | 固定值 | 含义 |
+|---|---|---|
+| `id` | `map.urban_wasteland` | 程序内部地图 ID |
+| `sceneKey` | `UrbanWastelandScene` | Phaser 场景注册键 |
+| `displayName` | `雾港旧工业区` | 玩家看到的正式地图名称 |
+| `type` | `urban_wasteland` | 地图主题分类，对应“城市污染荒地” |
+| `primaryRegionId` | `region.industrial_wetland_restoration` | 主要可玩区域 ID |
 
 主要区域的玩家可见名称固定为：
 
