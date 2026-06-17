@@ -8,17 +8,21 @@
 
 ## 项目文档
 
-- [项目总体说明](docs/00-project-overview.md)
-- [游戏概念与核心玩法](docs/01-game-concept-and-gameplay.md)
-- [剧情、角色与 NPC 系统](docs/02-story-character-and-npc.md)
-- [界面与视觉设计](docs/03-ui-and-visual-design.md)
-- [技术架构](docs/04-technical-architecture.md)
-- [接口规范](docs/05-api-contract.md)
-- [数据模型](docs/06-data-model.md)
-- [开发任务清单](docs/07-development-task-list.md)
-- [测试与验收标准](docs/08-testing-and-acceptance.md)
-- [部署与运维](docs/09-deployment-and-operations.md)
-- [v0.1 美术方向与资产规范](ecoseeder_docs/14_ART_DIRECTION_BIBLE_v0.1.md)
+- [文档总览](ecoseeder_docs/00_README.md)
+- [游戏概念与产品定位](ecoseeder_docs/01_GAME_CONCEPT.md)
+- [玩法、任务与内容设计](ecoseeder_docs/02_GAMEPLAY_AND_CONTENT.md)
+- [视觉、UI 与体验设计](ecoseeder_docs/03_VISUAL_UX_DIRECTION.md)
+- [技术实现与架构设计](ecoseeder_docs/04_TECHNICAL_ARCHITECTURE.md)
+- [接口契约与扩展规范](ecoseeder_docs/05_INTERFACE_CONTRACTS.md)
+- [内容包与版本迭代](ecoseeder_docs/06_CONTENT_AND_VERSIONING.md)
+- [开发任务](ecoseeder_docs/07_DEVELOPMENT_TASKS.md)
+- [CodeBuddy 与 NPC 协作](ecoseeder_docs/08_CNB_CODEBUDDY_COLLAB.md)
+- [验收与测试](ecoseeder_docs/09_ACCEPTANCE_AND_TESTING.md)
+- [开场视频分镜](ecoseeder_docs/10_INTRO_VIDEO_SCRIPT.md)
+- [共享 Agent 上下文](ecoseeder_docs/11_SHARED_AGENT_CONTEXT.md)
+- [NPC 协作规则](ecoseeder_docs/12_NPC_COLLABORATION_RULES.md)
+- [音频与配音规范](ecoseeder_docs/13_AUDIO_AND_VOICE_DESIGN.md)
+- [v0.1 美术方向](ecoseeder_docs/14_ART_DIRECTION_BIBLE_v0.1.md)
 
 ## 开发原则
 
