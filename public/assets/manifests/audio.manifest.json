@@ -1,0 +1,77 @@
+{
+  "version": "0.1.0",
+  "entries": [
+    {
+      "id": "music_main_menu_loop_001",
+      "type": "music",
+      "category": "music",
+      "path": "/assets/audio/music/music_main_menu_loop_001.ogg",
+      "loop": true,
+      "volume": 0.5
+    },
+    {
+      "id": "music_gameplay_calm_loop_001",
+      "type": "music",
+      "category": "music",
+      "path": "/assets/audio/music/music_gameplay_calm_loop_001.ogg",
+      "loop": true,
+      "volume": 0.5
+    },
+    {
+      "id": "sfx_ui_click_001",
+      "type": "sfx",
+      "category": "ui",
+      "path": "/assets/audio/sfx/ui/sfx_ui_click_001.wav",
+      "loop": false,
+      "volume": 0.8
+    },
+    {
+      "id": "sfx_ui_open_panel_001",
+      "type": "sfx",
+      "category": "ui",
+      "path": "/assets/audio/sfx/ui/sfx_ui_open_panel_001.wav",
+      "loop": false,
+      "volume": 0.8
+    },
+    {
+      "id": "sfx_ui_close_panel_001",
+      "type": "sfx",
+      "category": "ui",
+      "path": "/assets/audio/sfx/ui/sfx_ui_close_panel_001.wav",
+      "loop": false,
+      "volume": 0.8
+    },
+    {
+      "id": "sfx_task_accept_001",
+      "type": "sfx",
+      "category": "task",
+      "path": "/assets/audio/sfx/task/sfx_task_accept_001.wav",
+      "loop": false,
+      "volume": 0.8
+    },
+    {
+      "id": "sfx_task_complete_001",
+      "type": "sfx",
+      "category": "task",
+      "path": "/assets/audio/sfx/task/sfx_task_complete_001.wav",
+      "loop": false,
+      "volume": 0.8
+    },
+    {
+      "id": "ambient_polluted_city_loop_001",
+      "type": "ambient",
+      "category": "environment",
+      "path": "/assets/audio/ambient/ambient_polluted_city_loop_001.ogg",
+      "loop": true,
+      "volume": 0.5
+    },
+    {
+      "id": "ambient_restored_forest_loop_001",
+      "type": "ambient",
+      "category": "environment",
+      "path": "/assets/audio/ambient/ambient_restored_forest_loop_001.ogg",
+      "loop": true,
+      "volume": 0.5
+    }
+  ]
+}

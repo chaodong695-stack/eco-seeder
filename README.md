@@ -4,7 +4,114 @@
 
 ## 当前阶段
 
-项目需求定义与技术方案设计。
+M0：工程骨架阶段。已建立可运行、可测试、可扩展的基础工程。
+
+## 技术栈
+
+- React 18 + TypeScript（strict 模式）
+- Vite 6
+- Phaser 3（二维游戏场景，2.5D 仅视觉表现）
+- Zustand（状态管理）
+- CSS Modules + CSS Variables Design Tokens
+- Howler.js（音频管理骨架）
+- Zod（运行时配置校验，预留）
+- Vitest + React Testing Library（单元测试与组件测试）
+- ESLint + Prettier
+- npm（包管理器）
+
+## 安装与启动
+
+```bash
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+
+# 生产构建
+npm run build
+
+# 预览生产构建
+npm run preview
+```
+
+## 检查命令
+
+```bash
+# TypeScript 类型检查
+npm run typecheck
+
+# ESLint 代码检查
+npm run lint
+
+# Prettier 格式检查
+npm run format:check
+
+# 运行测试
+npm run test
+
+# 运行测试（带覆盖率）
+npm run test:coverage
+```
+
+## 页面流程
+
+```text
+开始页面
+→ 角色选择页面
+→ 选择男性或女性占位角色
+→ 主游戏场景（UrbanWastelandScene）
+→ 返回开始页面
+```
+
+## 工程目录
+
+```text
+src/
+├── app/                # 应用入口与路由
+├── game/               # Phaser 游戏层
+│   ├── bootstrap/      # 游戏配置与实例管理
+│   ├── scenes/         # Phaser 场景
+│   └── bridge/         # Phaser-React 事件桥接
+├── domain/             # 领域逻辑层（预留）
+├── services/           # 服务适配层
+│   ├── agent/          # AI 生态助手（MockAgentService）
+│   ├── asset/          # 资源清单
+│   └── audio/          # 音频管理骨架
+├── content/            # 内容配置层
+│   └── maps/           # 地图定义
+├── ui/                 # UI 组件层
+│   ├── pages/          # 页面组件
+│   ├── components/     # 通用组件
+│   └── styles/         # 全局样式与 Design Tokens
+├── store/              # Zustand 状态管理
+├── types/              # TypeScript 类型定义
+└── tests/              # 测试文件
+
+public/assets/          # 运行时资源
+├── placeholders/       # 占位资源
+├── maps/               # 地图资源
+├── characters/         # 角色资源
+├── npc/                # NPC 资源
+├── robots/             # 机器人资源
+├── ui/                 # UI 资源
+├── icons/              # 图标资源
+├── effects/            # 特效资源
+├── audio/              # 音频资源
+└── manifests/          # 资源清单
+    ├── assets.manifest.json
+    └── audio.manifest.json
+```
+
+## v0.1 主地图身份
+
+| 字段 | 固定值 | 含义 |
+|---|---|---|
+| `id` | `map.urban_wasteland` | 程序内部地图 ID |
+| `sceneKey` | `UrbanWastelandScene` | Phaser 场景注册键 |
+| `displayName` | 雾港旧工业区 | 玩家看到的正式地图名称 |
+| `type` | `urban_wasteland` | 地图主题分类 |
+| `primaryRegionId` | `region.industrial_wetland_restoration` | 主要可玩区域 ID |
 
 ## 项目文档
 
