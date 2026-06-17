@@ -5,6 +5,12 @@
  * 使用类型安全的 Event Bus，不允许组件直接访问 Phaser 内部对象。
  */
 
+import type {
+  InteractionAvailablePayload,
+  InteractionTriggeredPayload,
+  InteractionUnavailablePayload,
+} from '@/game/interaction/interactionTypes';
+
 export type GameBridgeEventMap = {
   GAME_READY: { mapId: string };
   PLAYER_INTERACT: { targetId: string };
@@ -13,6 +19,9 @@ export type GameBridgeEventMap = {
   DUNGEON_STARTED: { dungeonId: string };
   WEATHER_CHANGED: { weather: string };
   MAP_STATE_UPDATED: { summary: string };
+  INTERACTION_AVAILABLE: InteractionAvailablePayload;
+  INTERACTION_UNAVAILABLE: InteractionUnavailablePayload;
+  INTERACTION_TRIGGERED: InteractionTriggeredPayload;
 };
 
 type EventHandler<T = unknown> = (payload: T) => void;

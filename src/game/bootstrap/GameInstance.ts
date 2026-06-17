@@ -1,18 +1,24 @@
 import Phaser from 'phaser';
 import { createGameConfig } from './gameConfig';
 import type { PlayerCharacterGender } from '@/types';
+import { gameBridge } from '../bridge/GameBridge';
 
 /**
  * Phaser 游戏实例管理器。
  * 负责创建和销毁 Phaser 游戏实例。
+ * 确保 React Strict Mode 下不会出现重复实例和残留监听。
  */
 export class GameInstance {
   private game: Phaser.Game | null = null;
 
   mount(parent: HTMLElement, characterGender: PlayerCharacterGender): void {
+    // 如果已有实例，先销毁
     if (this.game) {
       this.destroy();
     }
+
+    // 清理可能残留的桥接事件
+    gameBridge.clear();
 
     const config = createGameConfig(parent);
     this.game = new Phaser.Game(config);
@@ -26,6 +32,8 @@ export class GameInstance {
       this.game.destroy(true);
       this.game = null;
     }
+    // 销毁后清理桥接事件，防止残留监听
+    gameBridge.clear();
   }
 
   isRunning(): boolean {

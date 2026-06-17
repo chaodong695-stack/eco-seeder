@@ -3,6 +3,7 @@ import { GameInstance } from '@/game/bootstrap/GameInstance';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { GameHud } from '@/ui/components/GameHud';
+import { InteractionPrompt } from '@/ui/components/InteractionPrompt';
 import { TaskPanel } from '@/ui/components/TaskPanel';
 import { NpcDialog } from '@/ui/components/NpcDialog';
 import { SettingsPanel } from '@/ui/components/SettingsPanel';
@@ -77,6 +78,7 @@ export function GamePage() {
       )}
 
       {isReady && <GameHud onReturnToStart={handleReturnToStart} />}
+      {isReady && <InteractionPrompt />}
       {isReady && isTaskPanelOpen && <TaskPanel />}
       {isReady && isNpcDialogOpen && <NpcDialog />}
       {isReady && isSettingsOpen && <SettingsPanel />}
