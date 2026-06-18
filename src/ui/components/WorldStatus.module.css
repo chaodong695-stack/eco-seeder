@@ -1,0 +1,30 @@
+.worldStatus {
+  position: absolute;
+  top: 48px;
+  left: var(--spacing-sm, 8px);
+  display: flex;
+  gap: var(--spacing-sm, 8px);
+  padding: 6px 12px;
+  background: rgba(8, 20, 23, 0.8);
+  border: var(--border-width-normal) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.statusItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statusLabel {
+  font-size: var(--font-size-xs, 11px);
+  color: var(--color-text-secondary);
+}
+
+.statusValue {
+  font-size: var(--font-size-sm, 13px);
+  color: var(--color-primary);
+  font-weight: 600;
+}

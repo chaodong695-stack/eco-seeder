@@ -1,6 +1,17 @@
 import { useUIStore } from '@/store/uiStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useWorldStore } from '@/store/worldStore';
+import type { DemoTimePreset } from '@/domain/time/timeTypes';
+import { DAY_PHASE_DISPLAY_NAMES } from '@/domain/time/timeTypes';
 import styles from './SettingsPanel.module.css';
+
+const TIME_PRESET_OPTIONS: { value: DemoTimePreset | null; label: string }[] = [
+  { value: null, label: '跟随现实时间' },
+  { value: 'dawn', label: DAY_PHASE_DISPLAY_NAMES.dawn },
+  { value: 'day', label: DAY_PHASE_DISPLAY_NAMES.day },
+  { value: 'dusk', label: DAY_PHASE_DISPLAY_NAMES.dusk },
+  { value: 'night', label: DAY_PHASE_DISPLAY_NAMES.night },
+];
 
 export function SettingsPanel() {
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
@@ -10,12 +21,27 @@ export function SettingsPanel() {
     sfxVolume,
     voiceVolume,
     muted,
+    timeMode,
+    demoTimePreset,
     setMasterVolume,
     setMusicVolume,
     setSfxVolume,
     setVoiceVolume,
     setMuted,
+    setTimeMode,
   } = useSettingsStore();
+
+  const setWorldTimeMode = useWorldStore((s) => s.setTimeMode);
+
+  const handleTimePresetChange = (value: DemoTimePreset | null) => {
+    if (value === null) {
+      setTimeMode('realtime', null);
+      setWorldTimeMode('realtime', null);
+    } else {
+      setTimeMode('demo', value);
+      setWorldTimeMode('demo', value);
+    }
+  };
 
   return (
     <div className={styles.overlay} onClick={() => setSettingsOpen(false)}>
@@ -30,6 +56,29 @@ export function SettingsPanel() {
           </button>
         </div>
         <div className={styles.panelBody}>
+          <div className={styles.settingGroup}>
+            <label className={styles.settingLabel}>
+              <span>演示时间</span>
+            </label>
+            <div className={styles.timePresetGroup}>
+              {TIME_PRESET_OPTIONS.map((option) => {
+                const isSelected =
+                  option.value === null
+                    ? timeMode === 'realtime'
+                    : timeMode === 'demo' && demoTimePreset === option.value;
+                return (
+                  <button
+                    key={option.label}
+                    className={`${styles.presetBtn} ${isSelected ? styles.presetBtnActive : ''}`}
+                    onClick={() => handleTimePresetChange(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className={styles.settingGroup}>
             <label className={styles.settingLabel}>
               <span>主音量</span>

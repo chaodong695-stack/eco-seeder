@@ -116,3 +116,31 @@
 .toggleKnobOn {
   left: 22px;
 }
+
+.timePresetGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs, 4px);
+}
+
+.presetBtn {
+  padding: 6px 14px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-panel);
+  border: var(--border-width-normal) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.presetBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.presetBtnActive {
+  background: var(--color-primary);
+  color: var(--color-panel);
+  border-color: var(--color-primary);
+}

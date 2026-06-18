@@ -18,6 +18,9 @@ import type {
   EnvironmentUpdatedPayload,
   VisualStageChangedPayload,
 } from '@/game/restoration/restorationTypes';
+import type { WorldTimeSnapshot, DayPhase, TimeMode } from '@/domain/time/timeTypes';
+import type { WeatherSnapshot } from '@/domain/weather/weatherTypes_ext';
+import type { WeatherTimeline } from '@/domain/weather/weatherTimelineGenerator';
 
 // ─── DEV-03 新增事件 payload ─────────────────────────────
 
@@ -57,6 +60,33 @@ export interface TaskFeedbackPayload {
   message: string;
 }
 
+// ─── DEV-05 新增事件 payload ─────────────────────────────
+
+/** 世界时间变化事件 payload。 */
+export interface WorldTimeChangedPayload {
+  previous: WorldTimeSnapshot | null;
+  current: WorldTimeSnapshot;
+}
+
+/** 昼夜阶段变化事件 payload。 */
+export interface DayPhaseChangedPayload {
+  previousPhase: DayPhase | null;
+  currentPhase: DayPhase;
+  mode: TimeMode;
+  localMinutes: number;
+}
+
+/** 天气时间线生成事件 payload。 */
+export interface WeatherTimelineGeneratedPayload {
+  timeline: WeatherTimeline;
+}
+
+/** 天气变化事件 payload（DEV-05 版本）。 */
+export interface WeatherChangedPayloadV2 {
+  previousWeather: string | null;
+  current: WeatherSnapshot;
+}
+
 export type GameBridgeEventMap = {
   GAME_READY: { mapId: string };
   PLAYER_INTERACT: { targetId: string };
@@ -80,6 +110,11 @@ export type GameBridgeEventMap = {
   RESTORATION_COMPLETED: RestorationCompletedPayload;
   ENVIRONMENT_UPDATED: EnvironmentUpdatedPayload;
   VISUAL_STAGE_CHANGED: VisualStageChangedPayload;
+  // DEV-05 新增事件
+  WORLD_TIME_CHANGED: WorldTimeChangedPayload;
+  DAY_PHASE_CHANGED: DayPhaseChangedPayload;
+  WEATHER_TIMELINE_GENERATED: WeatherTimelineGeneratedPayload;
+  WEATHER_CHANGED_V2: WeatherChangedPayloadV2;
 };
 
 type EventHandler<T = unknown> = (payload: T) => void;
