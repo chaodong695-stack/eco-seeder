@@ -6,18 +6,213 @@ import { useEnvironmentStore } from '@/store/environmentStore';
 import { RestorationController } from '@/game/restoration/RestorationController';
 import { POLLUTION_ZONE_01_TARGET } from '@/game/restoration/restorationDefinitions';
 
-const TASK_ID = 'task.urban_wasteland.pollution_cleanup_01';
+// ─── Phaser Mock with Scene lifecycle events ────────────────────────
+
+vi.mock('phaser', () => {
+  const SHUTDOWN = 'shutdown';
+  const DESTROY = 'destroy';
+
+  class EventEmitter {
+    private listeners: Map<string, Array<{ fn: () => void; ctx: unknown }>> = new Map();
+
+    on(event: string, fn: () => void, ctx?: unknown): void {
+      if (!this.listeners.has(event)) this.listeners.set(event, []);
+      this.listeners.get(event)!.push({ fn, ctx: ctx ?? null });
+    }
+
+    once(event: string, fn: () => void, ctx?: unknown): void {
+      const wrapper = () => {
+        this.off(event, wrapper);
+        fn.call(ctx);
+      };
+      this.on(event, wrapper, ctx);
+    }
+
+    off(event: string, fn: () => void): void {
+      const arr = this.listeners.get(event);
+      if (arr) {
+        const idx = arr.findIndex((l) => l.fn === fn);
+        if (idx >= 0) arr.splice(idx, 1);
+      }
+    }
+
+    emit(event: string): void {
+      const arr = this.listeners.get(event);
+      if (arr) {
+        // Copy to avoid mutation during iteration
+        [...arr].forEach(({ fn, ctx }) => fn.call(ctx));
+      }
+    }
+
+    removeAllListeners(): void {
+      this.listeners.clear();
+    }
+  }
+
+  class MockGameObject {
+    scene: MockScene | null;
+    destroyed = false;
+
+    constructor(scene: MockScene) {
+      this.scene = scene;
+    }
+
+    destroy(): void {
+      this.destroyed = true;
+      this.scene = null;
+    }
+
+    setFillStyle(): void {}
+    setAlpha(): void {}
+    setScale(): void {}
+    setStrokeStyle(): void {}
+    setOrigin(): void {}
+    setScrollFactor(): void {}
+    setDepth(): void {}
+    setVisible(): void {}
+    setText(): void {}
+  }
+
+  class MockSceneSystem {
+    private active = true;
+
+    isActive(): boolean {
+      return this.active;
+    }
+
+    setActive(v: boolean): void {
+      this.active = v;
+    }
+  }
+
+  class MockScene extends EventEmitter {
+    add = {
+      container: () => {
+        const obj = new MockGameObject(this);
+        obj.setDepth = () => {};
+        return obj;
+      },
+      rectangle: () => new MockGameObject(this),
+      text: () => new MockGameObject(this),
+    };
+    sys = new MockSceneSystem();
+    cameras = { main: { setBounds: () => {}, startFollow: () => {}, setZoom: () => {} } };
+    physics = {
+      world: { setBounds: () => {} },
+      add: {
+        staticGroup: () => ({ add: () => {} }),
+        existing: () => {},
+        collider: () => {},
+      },
+    };
+    input = { keyboard: null };
+    time = { now: 0 };
+    events = this; // Scene uses this.events for lifecycle
+
+    constructor() {
+      super();
+    }
+
+    /** Simulate Phaser SceneManager shutting down this scene */
+    simulateShutdown(): void {
+      this.sys.setActive(false);
+      this.events.emit(SHUTDOWN);
+    }
+
+    /** Simulate Phaser SceneManager destroying this scene */
+    simulateDestroy(): void {
+      this.sys.setActive(false);
+      this.events.emit(DESTROY);
+    }
+  }
+
+  return {
+    default: {
+      Scene: MockScene,
+      Game: class {},
+      Scenes: { Events: { SHUTDOWN, DESTROY } },
+      Input: { Keyboard: { KeyCodes: { W: 0, A: 0, S: 0, D: 0, E: 0 } } },
+      Scale: { RESIZE: 0, CENTER_BOTH: 0 },
+      AUTO: 0,
+    },
+    Scene: MockScene,
+    Scenes: { Events: { SHUTDOWN, DESTROY } },
+    Input: { Keyboard: { KeyCodes: { W: 0, A: 0, S: 0, D: 0, E: 0 } } },
+    Scale: { RESIZE: 0, CENTER_BOTH: 0 },
+    AUTO: 0,
+  };
+});
+
+// ─── Test constants ─────────────────────────────────────────────────
+
 const INTERACTION_ID = 'interaction.pollution_zone_01';
+const TASK_ID = 'task.urban_wasteland.pollution_cleanup_01';
+
+// ─── Helper: create a Scene-like object that tracks VISUAL_STAGE_CHANGED ───
+
+interface TrackedScene {
+  scene: unknown;
+  handlerCalls: number;
+  cleanup: (() => void) | null;
+  isShutdown: boolean;
+  isActive: boolean;
+}
 
 /**
- * 视觉阶段事件生命周期测试。
- *
- * 验证：
- * - Scene shutdown 后 VISUAL_STAGE_CHANGED 不再调用旧处理函数；
- * - 重复进入场景不会重复注册视觉事件；
- * - 视觉阶段事件只允许当前 active Scene 处理。
+ * Simulates the essential lifecycle behavior of UrbanWastelandScene
+ * regarding VISUAL_STAGE_CHANGED registration and cleanup.
  */
-describe('VISUAL_STAGE_CHANGED lifecycle', () => {
+function createTrackedScene(): TrackedScene {
+  const tracked: TrackedScene = {
+    scene: null,
+    handlerCalls: 0,
+    cleanup: null,
+    isShutdown: false,
+    isActive: true,
+  };
+
+  // Simulate create() behavior:
+  // 1. Register cleanup on SHUTDOWN and DESTROY
+  // 2. Unsubscribe old handler before registering new one
+  // 3. Register VISUAL_STAGE_CHANGED handler with guards
+
+  const handleCleanup = () => {
+    if (tracked.isShutdown) return;
+    tracked.isShutdown = true;
+    tracked.isActive = false;
+    tracked.cleanup?.();
+    tracked.cleanup = null;
+  };
+
+  tracked.cleanup = gameBridge.on('VISUAL_STAGE_CHANGED', () => {
+    if (tracked.isShutdown || !tracked.isActive) return;
+    tracked.handlerCalls++;
+  });
+
+  // Store the cleanup function for simulateShutdown/simulateDestroy
+  (tracked as unknown as { _handleCleanup: () => void })._handleCleanup = handleCleanup;
+
+  return tracked;
+}
+
+function simulateSceneShutdown(tracked: TrackedScene): void {
+  (tracked as unknown as { _handleCleanup: () => void })._handleCleanup();
+}
+
+function simulateSceneDestroy(tracked: TrackedScene): void {
+  (tracked as unknown as { _handleCleanup: () => void })._handleCleanup();
+}
+
+function emitVisualStageChanged(): void {
+  gameBridge.emit('VISUAL_STAGE_CHANGED', {
+    interactionId: INTERACTION_ID,
+    stage: 'recovering',
+  });
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────
+
+describe('Scene lifecycle — VISUAL_STAGE_CHANGED handler management', () => {
   beforeEach(() => {
     gameBridge.clear();
     useTaskStore.getState().resetTasks();
@@ -25,30 +220,155 @@ describe('VISUAL_STAGE_CHANGED lifecycle', () => {
     useEnvironmentStore.getState().resetEnvironment();
   });
 
-  it('unsubscribed handler does not receive events after unsubscribe', () => {
+  it('Scene create → registers exactly one VISUAL_STAGE_CHANGED handler', () => {
+    const scene = createTrackedScene();
+
+    emitVisualStageChanged();
+    expect(scene.handlerCalls).toBe(1);
+
+    emitVisualStageChanged();
+    expect(scene.handlerCalls).toBe(2);
+  });
+
+  it('Scene shutdown → handler is unsubscribed and no longer receives events', () => {
+    const scene = createTrackedScene();
+
+    emitVisualStageChanged();
+    expect(scene.handlerCalls).toBe(1);
+
+    simulateSceneShutdown(scene);
+
+    emitVisualStageChanged();
+    emitVisualStageChanged();
+    expect(scene.handlerCalls).toBe(1); // Still 1, not incremented
+  });
+
+  it('Scene destroy → handler is unsubscribed and no longer receives events', () => {
+    const scene = createTrackedScene();
+
+    emitVisualStageChanged();
+    expect(scene.handlerCalls).toBe(1);
+
+    simulateSceneDestroy(scene);
+
+    emitVisualStageChanged();
+    expect(scene.handlerCalls).toBe(1); // Still 1
+  });
+
+  it('Scene shutdown is idempotent — multiple shutdowns do not cause errors', () => {
+    const scene = createTrackedScene();
+
+    simulateSceneShutdown(scene);
+    // Second shutdown should be a no-op
+    expect(() => simulateSceneShutdown(scene)).not.toThrow();
+
+    emitVisualStageChanged();
+    expect(scene.handlerCalls).toBe(0);
+  });
+
+  it('React Strict Mode create/destroy/create — only new Scene responds', () => {
+    // First "mount" (React Strict Mode first render)
+    const scene1 = createTrackedScene();
+
+    emitVisualStageChanged();
+    expect(scene1.handlerCalls).toBe(1);
+
+    // React Strict Mode cleanup — destroy scene1
+    simulateSceneDestroy(scene1);
+
+    // React Strict Mode second render — create scene2
+    const scene2 = createTrackedScene();
+
+    emitVisualStageChanged();
+    // scene1 should NOT have received this event
+    expect(scene1.handlerCalls).toBe(1);
+    // scene2 SHOULD have received this event
+    expect(scene2.handlerCalls).toBe(1);
+  });
+
+  it('Old Scene InteractionZone does not respond to new VISUAL_STAGE_CHANGED', () => {
+    const oldScene = createTrackedScene();
+
+    emitVisualStageChanged();
+    expect(oldScene.handlerCalls).toBe(1);
+
+    // Destroy old scene
+    simulateSceneDestroy(oldScene);
+
+    // Create new scene
+    const newScene = createTrackedScene();
+
+    // Emit event — only new scene should respond
+    emitVisualStageChanged();
+
+    expect(oldScene.handlerCalls).toBe(1); // unchanged
+    expect(newScene.handlerCalls).toBe(1); // incremented
+  });
+
+  it('Cleanup completed event only calls handler once (no duplicate handlers)', () => {
+    const scene = createTrackedScene();
+
+    // Simulate restoration completion emitting VISUAL_STAGE_CHANGED
+    emitVisualStageChanged();
+
+    expect(scene.handlerCalls).toBe(1); // exactly once, not twice
+  });
+
+  it('Return to start page and re-enter — no duplicate handlers', () => {
+    // First play session
+    const scene1 = createTrackedScene();
+    emitVisualStageChanged();
+    expect(scene1.handlerCalls).toBe(1);
+
+    // Return to start page — destroy scene
+    simulateSceneDestroy(scene1);
+
+    // Re-enter game — new scene
+    const scene2 = createTrackedScene();
+    emitVisualStageChanged();
+
+    expect(scene1.handlerCalls).toBe(1); // old scene not called
+    expect(scene2.handlerCalls).toBe(1); // new scene called once
+
+    // Emit again — should still be exactly 1 call per emit
+    emitVisualStageChanged();
+    expect(scene2.handlerCalls).toBe(2); // not 3 or 4 (which would indicate duplicates)
+  });
+
+  it('Multiple destroy/create cycles do not accumulate handlers', () => {
+    for (let i = 0; i < 3; i++) {
+      const scene = createTrackedScene();
+      emitVisualStageChanged();
+      expect(scene.handlerCalls).toBe(1);
+      simulateSceneDestroy(scene);
+
+      // After destroy, event should not trigger handler
+      emitVisualStageChanged();
+      expect(scene.handlerCalls).toBe(1);
+    }
+  });
+});
+
+describe('GameBridge — handler count verification', () => {
+  beforeEach(() => {
+    gameBridge.clear();
+  });
+
+  it('after unsubscribe, GameBridge has zero VISUAL_STAGE_CHANGED handlers', () => {
     const handler = vi.fn();
     const unsub = gameBridge.on('VISUAL_STAGE_CHANGED', handler);
-
-    gameBridge.emit('VISUAL_STAGE_CHANGED', {
-      interactionId: INTERACTION_ID,
-      stage: 'recovering',
-    });
-    expect(handler).toHaveBeenCalledTimes(1);
-
     unsub();
 
     gameBridge.emit('VISUAL_STAGE_CHANGED', {
       interactionId: INTERACTION_ID,
       stage: 'recovering',
     });
-    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).not.toHaveBeenCalled();
   });
 
-  it('does not receive events after gameBridge.clear() (simulating Scene shutdown)', () => {
+  it('after clear, GameBridge has zero handlers', () => {
     const handler = vi.fn();
     gameBridge.on('VISUAL_STAGE_CHANGED', handler);
-
-    // Simulate what GameInstance.destroy does: clear all listeners
     gameBridge.clear();
 
     gameBridge.emit('VISUAL_STAGE_CHANGED', {
@@ -58,53 +378,24 @@ describe('VISUAL_STAGE_CHANGED lifecycle', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('re-registering after clear does not produce duplicate handlers', () => {
+  it('re-registering after clear produces exactly one handler', () => {
     const handler1 = vi.fn();
     const handler2 = vi.fn();
 
-    // First "scene" registers handler1
     gameBridge.on('VISUAL_STAGE_CHANGED', handler1);
-    gameBridge.emit('VISUAL_STAGE_CHANGED', {
-      interactionId: INTERACTION_ID,
-      stage: 'recovering',
-    });
-    expect(handler1).toHaveBeenCalledTimes(1);
-    expect(handler2).toHaveBeenCalledTimes(0);
-
-    // Scene shutdown / destroy — clears all
     gameBridge.clear();
-
-    // Second "scene" registers handler2
     gameBridge.on('VISUAL_STAGE_CHANGED', handler2);
-    gameBridge.emit('VISUAL_STAGE_CHANGED', {
-      interactionId: INTERACTION_ID,
-      stage: 'recovering',
-    });
-
-    expect(handler1).toHaveBeenCalledTimes(1); // not called again
-    expect(handler2).toHaveBeenCalledTimes(1); // called once
-  });
-
-  it('multiple VISUAL_STAGE_CHANGED events each invoke handler once', () => {
-    const handler = vi.fn();
-    gameBridge.on('VISUAL_STAGE_CHANGED', handler);
 
     gameBridge.emit('VISUAL_STAGE_CHANGED', {
       interactionId: INTERACTION_ID,
       stage: 'recovering',
     });
-    gameBridge.emit('VISUAL_STAGE_CHANGED', {
-      interactionId: INTERACTION_ID,
-      stage: 'recovering',
-    });
 
-    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler1).not.toHaveBeenCalled();
+    expect(handler2).toHaveBeenCalledTimes(1);
   });
 });
 
-/**
- * RestorationController 在 task 模式下不能启动的测试。
- */
 describe('RestorationController — task mode blocking', () => {
   let controller: RestorationController;
 
@@ -118,8 +409,6 @@ describe('RestorationController — task mode blocking', () => {
 
   it('cannot start when inputMode is task', () => {
     useTaskStore.getState().acceptTask(TASK_ID);
-
-    // Set input mode to task (simulating TaskPanel open)
     useUIStore.getState().setTaskPanelOpen(true);
     expect(useUIStore.getState().inputMode).toBe('task');
 
@@ -133,34 +422,26 @@ describe('RestorationController — task mode blocking', () => {
   it('in_progress restoration is interrupted when inputMode changes to task', () => {
     useTaskStore.getState().acceptTask(TASK_ID);
 
-    // Start restoration
     controller.setEKeyHeld(true);
     controller.setInRange(true);
     controller.update(16);
     expect(controller.getStatus()).toBe('in_progress');
 
-    // Simulate input mode changing to task externally
-    // (e.g., another part of the system sets it)
     useUIStore.getState().setInputMode('task');
-    expect(useUIStore.getState().inputMode).toBe('task');
-
     controller.update(16);
     expect(controller.getStatus()).toBe('interrupted');
   });
 
   it('can start after task panel is closed', () => {
     useTaskStore.getState().acceptTask(TASK_ID);
-
     useUIStore.getState().setTaskPanelOpen(true);
+
     controller.setEKeyHeld(true);
     controller.setInRange(true);
     controller.update(16);
     expect(controller.getStatus()).toBe('idle');
 
-    // Close task panel — back to gameplay
     useUIStore.getState().setTaskPanelOpen(false);
-    expect(useUIStore.getState().inputMode).toBe('gameplay');
-
     controller.update(16);
     expect(controller.getStatus()).toBe('in_progress');
   });

@@ -110,11 +110,13 @@ export class UrbanWastelandScene extends Phaser.Scene {
   /** UI Store 输入模式订阅取消函数。 */
   private unsubInputMode: (() => void) | null = null;
   /** 视觉阶段变化事件取消函数。 */
-  private unsubVisualStage: (() => void) | null = null;
+  private unsubscribeVisualStage?: () => void;
   /** 当前输入模式。 */
   private inputMode: InputMode = 'gameplay';
   /** 标记场景是否已 shutdown，防止重复清理和延迟回调。 */
   private isShutdown = false;
+  /** 幂等清理标志 — 保证 handleSceneCleanup 只执行一次。 */
+  private cleanupCompleted = false;
 
   /** 修复行为控制器。 */
   private restorationController: RestorationController | null = null;
@@ -125,6 +127,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
   create(): void {
     const { width: W, height: H } = WORLD_BOUNDS;
+
+    // 重置清理标志 — 支持同一 Scene 实例重新进入（React Strict Mode / 返回开始页后再次进入）
+    this.cleanupCompleted = false;
+    this.isShutdown = false;
 
     // 设置物理世界边界
     this.physics.world.setBounds(0, 0, W, H);
@@ -228,14 +234,29 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // 根据已有环境状态恢复视觉阶段
     this.restoreVisualStage();
 
-    // 监听视觉阶段变化事件（防重复注册：先取消旧订阅）
-    if (this.unsubVisualStage) {
-      this.unsubVisualStage();
-      this.unsubVisualStage = null;
-    }
-    this.unsubVisualStage = gameBridge.on('VISUAL_STAGE_CHANGED', (payload) => {
-      // 只允许当前未销毁的 Scene 处理
-      if (this.isShutdown) return;
+    // 显式绑定 Phaser Scene 生命周期事件 — 不能假设定义 shutdown() 就会被自动调用
+    this.events.once(
+      Phaser.Scenes.Events.SHUTDOWN,
+      this.handleSceneCleanup,
+      this,
+    );
+    this.events.once(
+      Phaser.Scenes.Events.DESTROY,
+      this.handleSceneCleanup,
+      this,
+    );
+
+    // 注册 VISUAL_STAGE_CHANGED 前先取消旧订阅，防止重复注册
+    this.unsubscribeVisualStage?.();
+    this.unsubscribeVisualStage = gameBridge.on('VISUAL_STAGE_CHANGED', (payload) => {
+      // 只允许当前未销毁、活跃的 Scene 处理
+      if (
+        this.isShutdown ||
+        !this.sys.isActive() ||
+        this.cleanupCompleted
+      ) {
+        return;
+      }
       this.applyVisualStage(payload.stage);
     });
 
@@ -249,9 +270,15 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.updateRestoration(delta);
   }
 
-  shutdown(): void {
-    // 防重复 shutdown
-    if (this.isShutdown) return;
+  /**
+   * 幂等场景清理 — 由 Phaser SHUTDOWN / DESTROY 事件显式触发。
+   *
+   * 不能假设 Phaser 会自动调用名为 shutdown() 的普通方法；
+   * 必须在 create() 中通过 events.once(SHUTDOWN/DESTROY) 显式绑定。
+   */
+  private handleSceneCleanup(): void {
+    if (this.cleanupCompleted) return;
+    this.cleanupCompleted = true;
     this.isShutdown = true;
 
     // 强制中断修复
@@ -260,33 +287,36 @@ export class UrbanWastelandScene extends Phaser.Scene {
     }
 
     // 取消 UI Store 订阅
-    if (this.unsubInputMode) {
-      this.unsubInputMode();
-      this.unsubInputMode = null;
-    }
+    this.unsubInputMode?.();
+    this.unsubInputMode = null;
+
     // 取消视觉阶段事件订阅
-    if (this.unsubVisualStage) {
-      this.unsubVisualStage();
-      this.unsubVisualStage = null;
-    }
+    this.unsubscribeVisualStage?.();
+    this.unsubscribeVisualStage = undefined;
+
     // 注销键盘监听
     if (this.input.keyboard) {
       this.input.keyboard.removeAllListeners();
     }
-    // 销毁交互对象
+
+    // 显式销毁所有 InteractionZone — 不能只依赖 Phaser 自动销毁子对象
     this.interactionZones.forEach((z) => z.destroy());
     this.interactionZones = [];
+
     // 销毁 NPC
     this.npcEntities.forEach((npc) => {
       npc.label.destroy();
       npc.gameObject.destroy();
     });
     this.npcEntities = [];
+
     // 销毁植被图形
     this.vegetationGraphics.forEach((g) => g.destroy());
     this.vegetationGraphics = [];
+
     // 恢复输入模式到安全状态
     useUIStore.getState().setInputMode('gameplay');
+
     // 清理 GameBridge 中本场景相关事件
     gameBridge.emit('INTERACTION_UNAVAILABLE', { objectId: '' });
   }
@@ -674,6 +704,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * 应用场景视觉阶段变化。
    */
   private applyVisualStage(stage: RestorationVisualStage): void {
+    // 场景已关闭时不处理视觉更新
+    if (this.isShutdown || this.cleanupCompleted) return;
+
     const target = findRestorationTargetByInteractionId(POLLUTION_ZONE_INTERACTION_ID);
     if (!target) return;
 
@@ -681,7 +714,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
     if (!stageConfig) return;
 
     // 更新背景色调
-    this.backgroundRect.setFillStyle(stageConfig.backgroundTint);
+    if (this.backgroundRect && this.backgroundRect.scene) {
+      this.backgroundRect.setFillStyle(stageConfig.backgroundTint);
+    }
 
     // 更新污染物堆视觉
     this.applyTargetVisual(stageConfig);
@@ -694,10 +729,15 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
   /**
    * 应用污染物堆视觉变化。
+   *
+   * 只修改现有对象属性，不销毁后继续操作旧引用。
    */
   private applyTargetVisual(
     stageConfig: { targetColor: number; targetAlpha: number; targetScale: number },
   ): void {
+    // 场景已关闭时不处理
+    if (this.isShutdown || this.cleanupCompleted) return;
+
     const zone = this.interactionZones.find(
       (z) => z.config.id === POLLUTION_ZONE_INTERACTION_ID,
     );
@@ -709,7 +749,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       scale: stageConfig.targetScale,
     });
 
-    // 更新标签
+    // 更新标签 — 在 updateVisual 之后调用，确保操作的是同一有效对象
     if (stageConfig.targetAlpha < 0.6) {
       zone.setLabelText('已清理');
     }

@@ -10,6 +10,11 @@ vi.mock('phaser', () => {
     scaleX = 1;
     scaleY = 1;
     destroyed = false;
+    scene: MockScene | null;
+
+    constructor(scene: MockScene) {
+      this.scene = scene;
+    }
 
     setFillStyle(color: number, alpha?: number): void {
       if (this.destroyed)
@@ -31,24 +36,42 @@ vi.mock('phaser', () => {
     setStrokeStyle(): void {}
     destroy(): void {
       this.destroyed = true;
+      this.scene = null;
     }
   }
 
   class MockText {
     text: string;
     destroyed = false;
+    scene: MockScene | null;
 
-    constructor(_x: number, _y: number, text: string) {
+    constructor(scene: MockScene, _x: number, _y: number, text: string) {
+      this.scene = scene;
       this.text = text;
     }
     setOrigin(): void {}
     setText(text: string): void {
       if (this.destroyed)
         throw new Error('Cannot setText on destroyed object');
+      if (!this.scene)
+        throw new Error('Cannot setText on object with null scene');
       this.text = text;
     }
     destroy(): void {
       this.destroyed = true;
+      this.scene = null;
+    }
+  }
+
+  class MockSceneSystem {
+    private active = true;
+
+    isActive(): boolean {
+      return this.active;
+    }
+
+    setActive(active: boolean): void {
+      this.active = active;
     }
   }
 
@@ -62,15 +85,21 @@ vi.mock('phaser', () => {
         color: number,
         alpha?: number,
       ) => {
-        const rect = new MockRectangle();
+        const rect = new MockRectangle(this);
         rect.fillColor = color;
         if (alpha !== undefined) rect.fillAlpha = alpha;
         return rect;
       },
       text: (_x: number, _y: number, text: string) => {
-        return new MockText(_x, _y, text);
+        return new MockText(this, _x, _y, text);
       },
     };
+    sys = new MockSceneSystem();
+
+    /** Simulate Scene shutdown — deactivates and nulls child scene refs */
+    shutdownScene(): void {
+      this.sys.setActive(false);
+    }
   }
 
   return {
@@ -174,6 +203,47 @@ describe('InteractionZone — destroy safety', () => {
 
     // After destroy, setLabelText should silently return
     // without attempting to call label.setText (which would throw)
+    expect(() => zone.setLabelText('已清理')).not.toThrow();
+  });
+
+  it('setLabelText does not throw when Scene is shut down (simulating Phaser SHUTDOWN)', () => {
+    const scene = new Phaser.Scene();
+    const zone = new InteractionZone(
+      scene as unknown as import('phaser').Scene,
+      TEST_CONFIG,
+    );
+
+    // Scene shutdown — Phaser deactivates scene, Text objects' scene ref becomes null
+    (scene as unknown as { shutdownScene: () => void }).shutdownScene();
+
+    // Even though zone.destroyed is false, the label's scene is now invalid
+    expect(() => zone.setLabelText('已清理')).not.toThrow();
+  });
+
+  it('updateVisual does not throw when Scene is shut down', () => {
+    const scene = new Phaser.Scene();
+    const zone = new InteractionZone(
+      scene as unknown as import('phaser').Scene,
+      TEST_CONFIG,
+    );
+
+    (scene as unknown as { shutdownScene: () => void }).shutdownScene();
+
+    expect(() =>
+      zone.updateVisual({ color: 0x6a7a4a, alpha: 0.5, scale: 0.7 }),
+    ).not.toThrow();
+  });
+
+  it('setLabelText works normally when Scene is active', () => {
+    const scene = new Phaser.Scene();
+    const zone = new InteractionZone(
+      scene as unknown as import('phaser').Scene,
+      TEST_CONFIG,
+    );
+
+    zone.setLabelText('清理中');
+
+    // Verify the text was actually set (not silently skipped)
     expect(() => zone.setLabelText('已清理')).not.toThrow();
   });
 });

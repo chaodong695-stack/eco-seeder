@@ -17,7 +17,8 @@ export class GameInstance {
       this.destroy();
     }
 
-    // 清理可能残留的桥接事件
+    // 清理可能残留的桥接事件 — 必须在创建新 Game 之前执行
+    // 防止 React Strict Mode 下旧 Scene 的 create() 延迟执行后注册残留 handler
     gameBridge.clear();
 
     const config = createGameConfig(parent);
@@ -29,11 +30,15 @@ export class GameInstance {
 
   destroy(): void {
     if (this.game) {
+      // 销毁前先注销所有 GameBridge 事件，防止 destroy 过程中
+      // 旧 handler 响应事件并操作已销毁的 Phaser 对象
+      gameBridge.clear();
       this.game.destroy(true);
       this.game = null;
+    } else {
+      // 即使没有 game 实例，也要清理可能残留的桥接事件
+      gameBridge.clear();
     }
-    // 销毁后清理桥接事件，防止残留监听
-    gameBridge.clear();
   }
 
   isRunning(): boolean {
