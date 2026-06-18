@@ -5,6 +5,7 @@ import { usePlayerStore } from '@/store/playerStore';
 import { useTaskStore } from '@/store/taskStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { GameHud } from '@/ui/components/GameHud';
 import { InteractionPrompt } from '@/ui/components/InteractionPrompt';
 import { TaskPanel } from '@/ui/components/TaskPanel';
@@ -13,6 +14,7 @@ import { SettingsPanel } from '@/ui/components/SettingsPanel';
 import { EnvironmentStatusPanel } from '@/ui/components/EnvironmentStatusPanel';
 import { RestorationProgress } from '@/ui/components/RestorationProgress';
 import { WorldStatus } from '@/ui/components/WorldStatus';
+import { DailyTaskPanel } from '@/ui/components/DailyTaskPanel';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -41,6 +43,10 @@ export function GamePage() {
       instance.mount(containerRef.current, character.gender);
       // 延迟设置就绪状态，等待 Phaser 初始化
       const timer = setTimeout(() => setIsReady(true), 300);
+
+      // 初始化每日任务（幂等）
+      useDailyTaskStore.getState().init();
+
       return () => {
         clearTimeout(timer);
         instance.destroy();
@@ -61,6 +67,7 @@ export function GamePage() {
     useTaskStore.getState().resetTasks();
     useEnvironmentStore.getState().resetEnvironment();
     useSettingsStore.getState().resetSettings();
+    // 每日任务不重置 — 返回开始页后不清空当日任务
     returnToStart();
   };
 
@@ -88,6 +95,7 @@ export function GamePage() {
 
       {isReady && <GameHud onReturnToStart={handleReturnToStart} />}
       {isReady && <WorldStatus />}
+      {isReady && <DailyTaskPanel />}
       {isReady && <InteractionPrompt />}
       {isReady && <EnvironmentStatusPanel />}
       {isReady && <RestorationProgress />}

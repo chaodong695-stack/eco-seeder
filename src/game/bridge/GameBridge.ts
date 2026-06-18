@@ -93,6 +93,42 @@ export interface DevWeatherPreviewPayload {
   weather: WeatherType | null;
 }
 
+// ─── DEV-06 新增事件 payload ─────────────────────────────
+
+/** 每日任务生成事件 payload。 */
+export interface DailyTasksGeneratedPayload {
+  tasks: import('@/domain/tasks/dailyTaskTypes').DailyTaskInstance[];
+}
+
+/** 每日任务状态变化事件 payload。 */
+export interface DailyTaskStatusChangedPayload {
+  instanceId: string;
+  taskId: string;
+  previousStatus: string;
+  currentStatus: string;
+}
+
+/** 每日任务进度变化事件 payload。 */
+export interface DailyTaskProgressChangedPayload {
+  instanceId: string;
+  taskId: string;
+  progress: number;
+  targetValue: number;
+}
+
+/** 每日任务完成事件 payload。 */
+export interface DailyTaskCompletedPayload {
+  instanceId: string;
+  taskId: string;
+}
+
+/** 每日任务进度信号 payload（由 Phaser Scene 发出）。 */
+export interface DailyTaskProgressSignalPayload {
+  objectiveType: string;
+  amount: number;
+  sourceId?: string;
+}
+
 export type GameBridgeEventMap = {
   GAME_READY: { mapId: string };
   PLAYER_INTERACT: { targetId: string };
@@ -123,6 +159,12 @@ export type GameBridgeEventMap = {
   WEATHER_CHANGED_V2: WeatherChangedPayloadV2;
   // DEV-05 开发天气预览事件（仅开发环境）
   DEV_WEATHER_PREVIEW: DevWeatherPreviewPayload;
+  // DEV-06 新增事件
+  DAILY_TASKS_GENERATED: DailyTasksGeneratedPayload;
+  DAILY_TASK_STATUS_CHANGED: DailyTaskStatusChangedPayload;
+  DAILY_TASK_PROGRESS_CHANGED: DailyTaskProgressChangedPayload;
+  DAILY_TASK_COMPLETED: DailyTaskCompletedPayload;
+  DAILY_TASK_PROGRESS_SIGNAL: DailyTaskProgressSignalPayload;
 };
 
 type EventHandler<T = unknown> = (payload: T) => void;

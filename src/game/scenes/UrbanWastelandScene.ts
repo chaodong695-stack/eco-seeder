@@ -47,6 +47,9 @@ import type { RestorationVisualStage } from '../restoration/restorationTypes';
 import { DayNightVisualController } from '../time/DayNightVisualController';
 import { WeatherVisualController } from '../weather/WeatherVisualController';
 import { useWorldStore } from '@/store/worldStore';
+import { useDailyTaskStore } from '@/store/dailyTaskStore';
+import { findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
+import { isWeatherConditionMet } from '@/domain/tasks/dailyTaskConditionResolver';
 import type { DayPhase } from '@/domain/time/timeTypes';
 import type { WeatherType } from '@/domain/weather/weatherTypes';
 
@@ -139,6 +142,11 @@ export class UrbanWastelandScene extends Phaser.Scene {
   /** 当前开发天气预览（仅开发环境）。 */
   private currentDevWeatherPreview: WeatherType | null = null;
 
+  /** 每日任务进度信号订阅取消函数。 */
+  private unsubDailyTaskProgress: (() => void) | null = null;
+  /** 每日任务 Store 订阅取消函数。 */
+  private unsubDailyTaskStore: (() => void) | null = null;
+
   constructor() {
     super({ key: SCENE_KEY });
   }
@@ -207,6 +215,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // 修复控制器初始化
     this.restorationController = new RestorationController(POLLUTION_ZONE_01_TARGET);
+
+    // 每日任务进度信号监听
+    this.setupDailyTaskListeners();
 
     // 昼夜和天气视觉控制器初始化
     this.dayNightController = new DayNightVisualController(this);
@@ -293,6 +304,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.handlePlayerMovement();
     this.updateInteractions();
     this.updateRestoration(delta);
+    this.updateNpcLabels();
   }
 
   /**
@@ -322,6 +334,12 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // 取消世界状态订阅
     this.unsubWorldStore?.();
     this.unsubWorldStore = null;
+
+    // 取消每日任务订阅
+    this.unsubDailyTaskProgress?.();
+    this.unsubDailyTaskProgress = null;
+    this.unsubDailyTaskStore?.();
+    this.unsubDailyTaskStore = null;
 
     // 销毁昼夜和天气视觉控制器
     this.dayNightController?.destroy();
@@ -360,6 +378,56 @@ export class UrbanWastelandScene extends Phaser.Scene {
   }
 
   // ─── 私有方法 ──────────────────────────────────────────
+
+  /**
+   * 设置每日任务进度信号监听。
+   *
+   * 监听 DAILY_TASK_PROGRESS_SIGNAL 事件，将其转发给 dailyTaskStore。
+   * Scene shutdown 时注销。
+   */
+  private setupDailyTaskListeners(): void {
+    this.unsubDailyTaskProgress = gameBridge.on('DAILY_TASK_PROGRESS_SIGNAL', (payload) => {
+      if (this.isShutdown || this.cleanupCompleted) return;
+      useDailyTaskStore.getState().applyProgress({
+        objectiveType: payload.objectiveType,
+        amount: payload.amount,
+        sourceId: payload.sourceId,
+      });
+    });
+  }
+
+  /**
+   * 刷新 NPC 标签 — 根据每日任务状态显示提示。
+   */
+  private updateNpcLabels(): void {
+    if (this.isShutdown || this.cleanupCompleted) return;
+
+    for (const npc of this.npcEntities) {
+      const npcTasks = useDailyTaskStore.getState().getTasksByNpcId(npc.config.id);
+      if (npcTasks.length === 0) continue;
+
+      const allCompleted = npcTasks.every((t) => t.status === 'completed');
+      const hasAvailable = npcTasks.some((t) => t.status === 'available');
+      const hasWaiting = npcTasks.some((t) => t.status === 'waiting_condition');
+      const hasActive = npcTasks.some((t) => t.status === 'active');
+
+      let indicator = '';
+      if (allCompleted) {
+        indicator = ' ✓';
+      } else if (hasAvailable) {
+        indicator = ' !';
+      } else if (hasWaiting) {
+        indicator = ' ⏳';
+      } else if (hasActive) {
+        indicator = ' …';
+      }
+
+      const labelText = `${npc.config.displayName}${indicator}`;
+      if (npc.label.text !== labelText && npc.label.scene) {
+        npc.label.setText(labelText);
+      }
+    }
+  }
 
   private createPlaceholderBuildings(): void {
     const buildingColors = [0x1a3538, 0x152a2d, 0x1f3a3e];
@@ -659,6 +727,13 @@ export class UrbanWastelandScene extends Phaser.Scene {
       return;
     }
 
+    // 每日任务天气交互对象
+    if (this.nearestInteractionId && !this.nearestIsNpc) {
+      if (this.handleWeatherTaskInteraction(this.nearestInteractionId)) {
+        return;
+      }
+    }
+
     // 其他交互对象
     if (this.nearestInteractionId) {
       this.handleInteractionObject(this.nearestInteractionId);
@@ -681,6 +756,72 @@ export class UrbanWastelandScene extends Phaser.Scene {
       type: zone.config.type,
       message,
     });
+  }
+
+  /**
+   * 处理天气任务交互对象（排水设施、暴雨垃圾）。
+   *
+   * 只在天气条件满足且任务处于 active 状态时计入进度。
+   * 返回 true 表示已处理，false 表示不是天气任务交互。
+   */
+  private handleWeatherTaskInteraction(objectId: string): boolean {
+    // 排水设施
+    if (objectId === 'interaction.drainage_facility_01') {
+      const def = findDailyTaskById('daily_drainage_check');
+      if (!def) return false;
+
+      const tasks = useDailyTaskStore.getState().tasks;
+      const inst = tasks.find((t) => t.taskId === 'daily_drainage_check');
+      if (!inst || inst.status !== 'active') {
+        this.emitInteractionFeedback(objectId, def.description);
+        return true;
+      }
+
+      const currentWeather = useWorldStore.getState().getDisplayWeather();
+      if (!isWeatherConditionMet(def, currentWeather)) {
+        this.emitInteractionFeedback(objectId, '当前天气不适合检查排水设施。');
+        return true;
+      }
+
+      // 计入进度
+      gameBridge.emit('DAILY_TASK_PROGRESS_SIGNAL', {
+        objectiveType: def.objectiveType,
+        amount: 1,
+        sourceId: objectId,
+      });
+      this.emitInteractionFeedback(objectId, '排水设施检查完成。');
+      return true;
+    }
+
+    // 暴雨冲散垃圾
+    if (objectId === 'interaction.storm_debris_01') {
+      const def = findDailyTaskById('daily_storm_waste');
+      if (!def) return false;
+
+      const tasks = useDailyTaskStore.getState().tasks;
+      const inst = tasks.find((t) => t.taskId === 'daily_storm_waste');
+      if (!inst || inst.status !== 'active') {
+        this.emitInteractionFeedback(objectId, def.description);
+        return true;
+      }
+
+      const currentWeather = useWorldStore.getState().getDisplayWeather();
+      if (!isWeatherConditionMet(def, currentWeather)) {
+        this.emitInteractionFeedback(objectId, '当前天气不适合清理暴雨垃圾。');
+        return true;
+      }
+
+      // 计入进度
+      gameBridge.emit('DAILY_TASK_PROGRESS_SIGNAL', {
+        objectiveType: def.objectiveType,
+        amount: 1,
+        sourceId: objectId,
+      });
+      this.emitInteractionFeedback(objectId, '已清理一处暴雨冲散的垃圾。');
+      return true;
+    }
+
+    return false;
   }
 
   private openNpcDialog(npcId: string): void {
@@ -892,6 +1033,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
             current: state.weatherSnapshot,
           });
         }
+        // 刷新每日任务天气条件
+        useDailyTaskStore.getState().refreshWeatherConditions();
       }
 
       // 天气变化（仅非预览时更新视觉）
@@ -905,6 +1048,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
           previousWeather: prevWeather,
           current: state.weatherSnapshot,
         });
+        // 刷新每日任务天气条件
+        useDailyTaskStore.getState().refreshWeatherConditions();
       }
     });
   }
