@@ -36,7 +36,7 @@ import { WORLD_BOUNDS, CAMERA_FOLLOW } from '../config/movementConfig';
 import { NPC_DEFINITIONS } from '../npc/npcDefinitions';
 import type { NpcDefinition } from '../npc/npcTypes';
 import { useTaskStore } from '@/store/taskStore';
-import { useUIStore } from '@/store/uiStore';
+import { useUIStore, type InputMode } from '@/store/uiStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
 import {
   POLLUTION_ZONE_01_TARGET,
@@ -112,7 +112,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
   /** 视觉阶段变化事件取消函数。 */
   private unsubVisualStage: (() => void) | null = null;
   /** 当前输入模式。 */
-  private inputMode: 'gameplay' | 'restoration' | 'dialog' | 'settings' = 'gameplay';
+  private inputMode: InputMode = 'gameplay';
+  /** 标记场景是否已 shutdown，防止重复清理和延迟回调。 */
+  private isShutdown = false;
 
   /** 修复行为控制器。 */
   private restorationController: RestorationController | null = null;
@@ -226,8 +228,14 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // 根据已有环境状态恢复视觉阶段
     this.restoreVisualStage();
 
-    // 监听视觉阶段变化事件
+    // 监听视觉阶段变化事件（防重复注册：先取消旧订阅）
+    if (this.unsubVisualStage) {
+      this.unsubVisualStage();
+      this.unsubVisualStage = null;
+    }
     this.unsubVisualStage = gameBridge.on('VISUAL_STAGE_CHANGED', (payload) => {
+      // 只允许当前未销毁的 Scene 处理
+      if (this.isShutdown) return;
       this.applyVisualStage(payload.stage);
     });
 
@@ -242,6 +250,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    // 防重复 shutdown
+    if (this.isShutdown) return;
+    this.isShutdown = true;
+
     // 强制中断修复
     if (this.restorationController) {
       this.restorationController.forceInterrupt('场景销毁');
@@ -689,7 +701,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
     const zone = this.interactionZones.find(
       (z) => z.config.id === POLLUTION_ZONE_INTERACTION_ID,
     );
-    if (!zone) return;
+    if (!zone || zone.isDestroyed) return;
 
     zone.updateVisual({
       color: stageConfig.targetColor,

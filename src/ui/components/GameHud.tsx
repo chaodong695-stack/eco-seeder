@@ -11,6 +11,12 @@ export function GameHud({ onReturnToStart }: GameHudProps) {
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const inputMode = useUIStore((s) => s.inputMode);
   const isRestoration = inputMode === 'restoration';
+  const isTaskOpen = inputMode === 'task';
+  const isDialogOpen = inputMode === 'dialog';
+  const isSettingsOpenUI = inputMode === 'settings';
+  // 按钮在其他 UI 打开时禁用
+  const disableTaskBtn = isRestoration || isDialogOpen || isSettingsOpenUI;
+  const disableSettingsBtn = isRestoration || isTaskOpen || isDialogOpen;
 
   return (
     <div className={styles.hud}>
@@ -21,7 +27,7 @@ export function GameHud({ onReturnToStart }: GameHudProps) {
           <button
             className={styles.iconBtn}
             title="设置"
-            disabled={isRestoration}
+            disabled={disableSettingsBtn}
             onClick={() => setSettingsOpen(true)}
           >
             ⚙
@@ -33,14 +39,14 @@ export function GameHud({ onReturnToStart }: GameHudProps) {
       <div className={styles.bottomBar}>
         <button
           className={styles.bottomBtn}
-          disabled={isRestoration}
+          disabled={disableTaskBtn}
           onClick={() => setTaskPanelOpen(true)}
         >
           任务
         </button>
         <button
           className={styles.bottomBtn}
-          disabled={isRestoration}
+          disabled={disableSettingsBtn}
           onClick={() => setSettingsOpen(true)}
         >
           设置

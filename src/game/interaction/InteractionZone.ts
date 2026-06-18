@@ -16,10 +16,11 @@ export interface InteractionZoneVisualUpdate {
  */
 export class InteractionZone {
   readonly config: InteractionObjectConfig;
-  private readonly gameObject: Phaser.GameObjects.Rectangle;
-  private readonly label: Phaser.GameObjects.Text;
+  private gameObject: Phaser.GameObjects.Rectangle | null;
+  private label: Phaser.GameObjects.Text | null;
   private isAvailable = false;
   private lastTriggerTime = 0;
+  private destroyed = false;
 
   constructor(scene: Phaser.Scene, config: InteractionObjectConfig) {
     this.config = config;
@@ -76,6 +77,7 @@ export class InteractionZone {
    * 更新视觉外观（颜色、透明度、缩放）。
    */
   updateVisual(update: InteractionZoneVisualUpdate): void {
+    if (this.destroyed || !this.gameObject) return;
     if (update.color !== undefined) {
       this.gameObject.setFillStyle(update.color, update.alpha ?? this.gameObject.alpha);
     }
@@ -90,19 +92,34 @@ export class InteractionZone {
   /**
    * 获取当前视觉对象（用于场景层面的额外操作）。
    */
-  getGameObject(): Phaser.GameObjects.Rectangle {
+  getGameObject(): Phaser.GameObjects.Rectangle | null {
     return this.gameObject;
   }
 
   /**
    * 设置标签文本。
+   * 对已销毁对象安全返回，不抛出异常。
    */
   setLabelText(text: string): void {
+    if (this.destroyed || !this.label) return;
     this.label.setText(text);
   }
 
+  /** 是否已销毁。 */
+  get isDestroyed(): boolean {
+    return this.destroyed;
+  }
+
   destroy(): void {
-    this.label.destroy();
-    this.gameObject.destroy();
+    if (this.destroyed) return;
+    this.destroyed = true;
+    if (this.label) {
+      this.label.destroy();
+      this.label = null;
+    }
+    if (this.gameObject) {
+      this.gameObject.destroy();
+      this.gameObject = null;
+    }
   }
 }
