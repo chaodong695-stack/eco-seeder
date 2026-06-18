@@ -51,4 +51,33 @@ describe('settingsStore', () => {
     expect(state.masterVolume).toBe(DEFAULT_AUDIO_SETTINGS.masterVolume);
     expect(state.muted).toBe(DEFAULT_AUDIO_SETTINGS.muted);
   });
+
+  it('initializes with realtime time mode', () => {
+    const state = useSettingsStore.getState();
+    expect(state.timeMode).toBe('realtime');
+    expect(state.demoTimePreset).toBeNull();
+  });
+
+  it('sets time mode to demo with preset', () => {
+    useSettingsStore.getState().setTimeMode('demo', 'night');
+    const state = useSettingsStore.getState();
+    expect(state.timeMode).toBe('demo');
+    expect(state.demoTimePreset).toBe('night');
+  });
+
+  it('sets time mode back to realtime', () => {
+    useSettingsStore.getState().setTimeMode('demo', 'dawn');
+    useSettingsStore.getState().setTimeMode('realtime', null);
+    const state = useSettingsStore.getState();
+    expect(state.timeMode).toBe('realtime');
+    expect(state.demoTimePreset).toBeNull();
+  });
+
+  it('resets time mode to defaults', () => {
+    useSettingsStore.getState().setTimeMode('demo', 'dusk');
+    useSettingsStore.getState().resetSettings();
+    const state = useSettingsStore.getState();
+    expect(state.timeMode).toBe('realtime');
+    expect(state.demoTimePreset).toBeNull();
+  });
 });

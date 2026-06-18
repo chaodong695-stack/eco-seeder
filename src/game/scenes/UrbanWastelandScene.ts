@@ -44,6 +44,11 @@ import {
 } from '../restoration/restorationDefinitions';
 import { RestorationController } from '../restoration/RestorationController';
 import type { RestorationVisualStage } from '../restoration/restorationTypes';
+import { DayNightVisualController } from '../time/DayNightVisualController';
+import { WeatherVisualController } from '../weather/WeatherVisualController';
+import { useWorldStore } from '@/store/worldStore';
+import type { DayPhase } from '@/domain/time/timeTypes';
+import type { WeatherType } from '@/domain/weather/weatherTypes';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
 
@@ -121,6 +126,19 @@ export class UrbanWastelandScene extends Phaser.Scene {
   /** 修复行为控制器。 */
   private restorationController: RestorationController | null = null;
 
+  /** 昼夜视觉控制器。 */
+  private dayNightController: DayNightVisualController | null = null;
+  /** 天气视觉控制器。 */
+  private weatherController: WeatherVisualController | null = null;
+  /** 世界状态订阅取消函数。 */
+  private unsubWorldStore: (() => void) | null = null;
+  /** 当前昼夜阶段。 */
+  private currentDayPhase: DayPhase | null = null;
+  /** 当前天气。 */
+  private currentWeatherType: WeatherType | null = null;
+  /** 当前开发天气预览（仅开发环境）。 */
+  private currentDevWeatherPreview: WeatherType | null = null;
+
   constructor() {
     super({ key: SCENE_KEY });
   }
@@ -189,6 +207,13 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // 修复控制器初始化
     this.restorationController = new RestorationController(POLLUTION_ZONE_01_TARGET);
+
+    // 昼夜和天气视觉控制器初始化
+    this.dayNightController = new DayNightVisualController(this);
+    this.weatherController = new WeatherVisualController(this);
+
+    // 初始化世界状态（时间 + 天气）
+    this.initWorldState();
 
     // 交互提示文本（跟随摄像机）
     this.interactionHintText = this.add
@@ -293,6 +318,19 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // 取消视觉阶段事件订阅
     this.unsubscribeVisualStage?.();
     this.unsubscribeVisualStage = undefined;
+
+    // 取消世界状态订阅
+    this.unsubWorldStore?.();
+    this.unsubWorldStore = null;
+
+    // 销毁昼夜和天气视觉控制器
+    this.dayNightController?.destroy();
+    this.dayNightController = null;
+    this.weatherController?.destroy();
+    this.weatherController = null;
+
+    // 重置世界状态
+    useWorldStore.getState().resetWorld();
 
     // 注销键盘监听
     if (this.input.keyboard) {
@@ -784,6 +822,109 @@ export class UrbanWastelandScene extends Phaser.Scene {
       this.interactiveLayer.add(veg);
       this.vegetationGraphics.push(veg);
     }
+  }
+
+  /**
+   * 初始化世界状态 — 时间服务和天气系统。
+   *
+   * 初始化幂等，重复进入不产生重复计时器。
+   */
+  private initWorldState(): void {
+    const worldStore = useWorldStore.getState();
+
+    // 初始化世界状态（时间 + 天气时间线）
+    worldStore.init();
+
+    // 应用当前昼夜和天气视觉
+    const { timeSnapshot, weatherSnapshot, devWeatherPreview } = useWorldStore.getState();
+    this.applyDayPhase(timeSnapshot.phase);
+    // 预览优先
+    this.applyWeatherVisual(devWeatherPreview ?? weatherSnapshot.weather);
+
+    // 发射初始事件
+    gameBridge.emit('WORLD_TIME_CHANGED', {
+      previous: null,
+      current: timeSnapshot,
+    });
+    gameBridge.emit('DAY_PHASE_CHANGED', {
+      previousPhase: null,
+      currentPhase: timeSnapshot.phase,
+      mode: timeSnapshot.mode,
+      localMinutes: timeSnapshot.localMinutes,
+    });
+
+    const timeline = useWorldStore.getState().getWeatherTimeline();
+    if (timeline) {
+      gameBridge.emit('WEATHER_TIMELINE_GENERATED', { timeline });
+    }
+
+    gameBridge.emit('WEATHER_CHANGED_V2', {
+      previousWeather: null,
+      current: weatherSnapshot,
+    });
+
+    // 订阅世界状态变化
+    this.unsubWorldStore = useWorldStore.subscribe((state) => {
+      if (this.isShutdown || this.cleanupCompleted) return;
+
+      // 昼夜阶段变化
+      if (state.timeSnapshot.phase !== this.currentDayPhase) {
+        const prevPhase = this.currentDayPhase;
+        this.applyDayPhase(state.timeSnapshot.phase);
+        gameBridge.emit('DAY_PHASE_CHANGED', {
+          previousPhase: prevPhase,
+          currentPhase: state.timeSnapshot.phase,
+          mode: state.timeSnapshot.mode,
+          localMinutes: state.timeSnapshot.localMinutes,
+        });
+      }
+
+      // 开发天气预览变化 — 不影响正式天气时间线
+      if (state.devWeatherPreview !== this.currentDevWeatherPreview) {
+        this.currentDevWeatherPreview = state.devWeatherPreview;
+        const displayWeather = state.devWeatherPreview ?? state.weatherSnapshot.weather;
+        this.applyWeatherVisual(displayWeather);
+        gameBridge.emit('DEV_WEATHER_PREVIEW', { weather: state.devWeatherPreview });
+        // 预览退出时恢复正式天气
+        if (state.devWeatherPreview === null) {
+          gameBridge.emit('WEATHER_CHANGED_V2', {
+            previousWeather: null,
+            current: state.weatherSnapshot,
+          });
+        }
+      }
+
+      // 天气变化（仅非预览时更新视觉）
+      if (
+        state.devWeatherPreview === null &&
+        state.weatherSnapshot.weather !== this.currentWeatherType
+      ) {
+        const prevWeather = this.currentWeatherType;
+        this.applyWeatherVisual(state.weatherSnapshot.weather);
+        gameBridge.emit('WEATHER_CHANGED_V2', {
+          previousWeather: prevWeather,
+          current: state.weatherSnapshot,
+        });
+      }
+    });
+  }
+
+  /**
+   * 应用昼夜阶段视觉。
+   */
+  private applyDayPhase(phase: DayPhase): void {
+    if (this.isShutdown || this.cleanupCompleted) return;
+    this.currentDayPhase = phase;
+    this.dayNightController?.applyPhase(phase);
+  }
+
+  /**
+   * 应用天气视觉。
+   */
+  private applyWeatherVisual(weather: WeatherType): void {
+    if (this.isShutdown || this.cleanupCompleted) return;
+    this.currentWeatherType = weather;
+    this.weatherController?.applyWeather(weather);
   }
 }
 

@@ -372,6 +372,77 @@ function getMapVisualStage(
 
 ## 4. 天气接口
 
+### 4.1 天气配置与时间线（DEV-05 实现）
+
+```ts
+type DayPhase = 'dawn' | 'day' | 'dusk' | 'night';
+type TimeMode = 'realtime' | 'demo';
+type DemoTimePreset = DayPhase;
+
+interface WorldTimeSnapshot {
+  mode: TimeMode;
+  localDate: string; // YYYY-MM-DD
+  localMinutes: number; // 0–1439
+  timezoneOffsetMinutes: number;
+  phase: DayPhase;
+  demoPreset: DemoTimePreset | null;
+}
+
+type WeatherType = 'clear' | 'overcast' | 'light_rain' | 'heavy_rain' | 'fog';
+
+interface WeatherDefinition {
+  type: WeatherType;
+  displayName: string;
+  intensity: number;
+  visibility: number;
+  ambientTint: number;
+  overlayAlpha: number;
+  particleProfile: string | null;
+}
+
+interface WeatherProfile {
+  id: string;
+  mapId: string;
+  supportedWeather: WeatherType[];
+  baseWeights: Record<WeatherType, number>;
+  transitionWeights: Partial<Record<WeatherType, Partial<Record<WeatherType, number>>>>;
+}
+
+interface WeatherTimelineEntry {
+  id: string;
+  startMinute: number;
+  endMinute: number;
+  weather: WeatherType;
+  intensity: number;
+}
+
+interface WeatherTimeline {
+  date: string;
+  mapId: string;
+  seed: string;
+  entries: WeatherTimelineEntry[];
+}
+
+interface WeatherSnapshot {
+  date: string;
+  mapId: string;
+  weather: WeatherType;
+  displayName: string;
+  intensity: number;
+  visibility: number;
+  timelineEntryId: string;
+}
+```
+
+DEV-05 暴露只读能力供 DEV-06 使用：
+```ts
+getCurrentWorldTime(): WorldTimeSnapshot
+getCurrentWeather(): WeatherSnapshot
+getWeatherTimeline(): WeatherTimeline | null
+```
+
+### 4.2 原始天气接口（规范保留）
+
 ```ts
 interface WeatherProfile extends BaseEntity {
   mapTypes: MapType[];
@@ -659,6 +730,11 @@ interface GameBridgeEvents {
   DUNGEON_STARTED: { dungeonId: string };
   WEATHER_CHANGED: { weather: WeatherSegment };
   MAP_STATE_UPDATED: { summary: MapStateSummary };
+  // DEV-05 新增
+  WORLD_TIME_CHANGED: { previous: WorldTimeSnapshot | null; current: WorldTimeSnapshot };
+  DAY_PHASE_CHANGED: { previousPhase: DayPhase | null; currentPhase: DayPhase; mode: TimeMode; localMinutes: number };
+  WEATHER_TIMELINE_GENERATED: { timeline: WeatherTimeline };
+  WEATHER_CHANGED_V2: { previousWeather: string | null; current: WeatherSnapshot };
 }
 ```
 
