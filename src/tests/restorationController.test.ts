@@ -356,6 +356,17 @@ describe('RestorationController — Task Integration', () => {
       expect(controller.getStatus()).toBe('interrupted');
       expect(useUIStore.getState().inputMode).toBe('gameplay');
     });
+
+    it('emits interrupted event with inRange=false when forceInterrupt called', () => {
+      const handler = vi.fn();
+      gameBridge.on('RESTORATION_INTERRUPTED', handler);
+
+      controller.forceInterrupt('场景销毁');
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const payload = handler.mock.calls[0][0] as RestorationInterruptedPayload;
+      expect(payload.inRange).toBe(false);
+    });
   });
 
   describe('getInteractionHint', () => {
@@ -418,6 +429,143 @@ describe('RestorationController — Task Integration', () => {
     it('does not sync when effect not applied', () => {
       controller.syncCompleted();
       expect(controller.getStatus()).toBe('idle');
+    });
+  });
+
+  // ─── 离开范围 / 重新进入范围 行为 ───────────────────────
+
+  describe('leaving range while interrupted', () => {
+    it('preserves progress after leaving range', () => {
+      useTaskStore.getState().acceptTask(TASK_ID);
+      controller.setEKeyHeld(true);
+      controller.setInRange(true);
+      controller.update(16);
+
+      // 进度推进
+      for (let i = 0; i < 60; i++) {
+        controller.update(16);
+      }
+      const progressBefore = controller.getProgress();
+      expect(progressBefore).toBeGreaterThan(0.1);
+
+      // 松开 E 中断
+      controller.setEKeyHeld(false);
+      controller.update(16);
+      expect(controller.getStatus()).toBe('interrupted');
+
+      // 离开范围
+      controller.setInRange(false);
+
+      // 进度保留
+      expect(controller.getProgress()).toBe(progressBefore);
+      expect(controller.getStatus()).toBe('interrupted');
+    });
+
+    it('emits interrupted event with inRange=false when leaving range', () => {
+      const handler = vi.fn();
+      gameBridge.on('RESTORATION_INTERRUPTED', handler);
+
+      useTaskStore.getState().acceptTask(TASK_ID);
+      controller.setEKeyHeld(true);
+      controller.setInRange(true);
+      controller.update(16);
+
+      // 松开 E 中断
+      controller.setEKeyHeld(false);
+      controller.update(16);
+      expect(controller.getStatus()).toBe('interrupted');
+
+      handler.mockClear();
+
+      // 离开范围 — 应重新发出中断事件（inRange=false）
+      controller.setInRange(false);
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const payload = handler.mock.calls[0][0] as RestorationInterruptedPayload;
+      expect(payload.inRange).toBe(false);
+    });
+
+    it('emits interrupted event with inRange=true when re-entering range', () => {
+      const handler = vi.fn();
+      gameBridge.on('RESTORATION_INTERRUPTED', handler);
+
+      useTaskStore.getState().acceptTask(TASK_ID);
+      controller.setEKeyHeld(true);
+      controller.setInRange(true);
+      controller.update(16);
+
+      // 松开 E 中断
+      controller.setEKeyHeld(false);
+      controller.update(16);
+      expect(controller.getStatus()).toBe('interrupted');
+
+      // 离开范围
+      controller.setInRange(false);
+
+      handler.mockClear();
+
+      // 重新进入范围 — 应发出中断事件（inRange=true）
+      controller.setInRange(true);
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const payload = handler.mock.calls[0][0] as RestorationInterruptedPayload;
+      expect(payload.inRange).toBe(true);
+    });
+
+    it('does not advance progress when out of range and E pressed', () => {
+      useTaskStore.getState().acceptTask(TASK_ID);
+      controller.setEKeyHeld(true);
+      controller.setInRange(true);
+      controller.update(16);
+
+      // 松开 E 中断
+      controller.setEKeyHeld(false);
+      controller.update(16);
+      expect(controller.getStatus()).toBe('interrupted');
+
+      // 离开范围
+      controller.setInRange(false);
+
+      // 按住 E 但不在范围
+      controller.setEKeyHeld(true);
+      const progressBefore = controller.getProgress();
+
+      for (let i = 0; i < 60; i++) {
+        controller.update(16);
+      }
+
+      // 进度不应增加
+      expect(controller.getProgress()).toBe(progressBefore);
+      expect(controller.getStatus()).toBe('interrupted');
+    });
+
+    it('resumes from saved progress when re-entering range and holding E', () => {
+      useTaskStore.getState().acceptTask(TASK_ID);
+      controller.setEKeyHeld(true);
+      controller.setInRange(true);
+
+      // 进度到 ~50%
+      for (let i = 0; i < 90; i++) {
+        controller.update(16);
+      }
+      const progressBefore = controller.getProgress();
+      expect(progressBefore).toBeGreaterThan(0.3);
+
+      // 松开 E 中断
+      controller.setEKeyHeld(false);
+      controller.update(16);
+      expect(controller.getStatus()).toBe('interrupted');
+
+      // 离开范围
+      controller.setInRange(false);
+
+      // 重新进入范围并按住 E
+      controller.setInRange(true);
+      controller.setEKeyHeld(true);
+      controller.update(16);
+
+      expect(controller.getStatus()).toBe('in_progress');
+      expect(controller.getProgress()).toBeGreaterThanOrEqual(progressBefore);
     });
   });
 });

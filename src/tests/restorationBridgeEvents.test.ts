@@ -66,6 +66,7 @@ describe('GameBridge DEV-04 restoration events', () => {
         interactionId: 'interaction.pollution_zone_01',
         progress: 0.3,
         reason: '松开 E',
+        inRange: true,
       };
 
       gameBridge.emit('RESTORATION_INTERRUPTED', payload);

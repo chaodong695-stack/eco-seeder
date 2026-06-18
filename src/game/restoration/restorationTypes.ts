@@ -91,6 +91,8 @@ export interface RestorationInterruptedPayload {
   interactionId: string;
   progress: number;
   reason: string;
+  /** 玩家是否在交互范围内。 */
+  inRange: boolean;
 }
 
 /** 修复完成事件 payload。 */

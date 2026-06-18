@@ -63,7 +63,32 @@ export class RestorationController {
 
   /** 设置玩家是否在交互范围内。 */
   setInRange(inRange: boolean): void {
+    const wasInRange = this.isInRange;
     this.isInRange = inRange;
+
+    // 离开范围时，如果当前状态为 interrupted，
+    // 重新发出中断事件以通知 UI 隐藏（标记 inRange=false）。
+    if (wasInRange && !inRange && this.status === 'interrupted') {
+      gameBridge.emit('RESTORATION_INTERRUPTED', {
+        targetId: this.target.id,
+        interactionId: this.target.interactionId,
+        progress: this.getProgress(),
+        reason: '离开交互范围',
+        inRange: false,
+      });
+    }
+
+    // 重新进入范围时，如果当前状态为 interrupted，
+    // 重新发出中断事件以通知 UI 重新显示（标记 inRange=true）。
+    if (!wasInRange && inRange && this.status === 'interrupted') {
+      gameBridge.emit('RESTORATION_INTERRUPTED', {
+        targetId: this.target.id,
+        interactionId: this.target.interactionId,
+        progress: this.getProgress(),
+        reason: '重新进入交互范围',
+        inRange: true,
+      });
+    }
   }
 
   /** 获取关联的修复目标定义。 */
@@ -200,6 +225,7 @@ export class RestorationController {
       interactionId: this.target.interactionId,
       progress,
       reason,
+      inRange: this.isInRange,
     });
   }
 
@@ -288,10 +314,23 @@ export class RestorationController {
 
   /**
    * 强制中断 — 场景销毁、返回开始页等场景调用。
+   *
+   * 无论当前处于什么状态，都发出中断事件以通知 UI 隐藏。
+   * completed 状态不发出中断事件（已完成无需隐藏进度 UI，
+   * 完成事件已有自动隐藏逻辑）。
    */
   forceInterrupt(reason: string): void {
     if (this.status === 'in_progress') {
       this.interrupt(reason);
+    } else if (this.status === 'interrupted' || this.status === 'idle') {
+      // 已经中断或未开始 — 仍然发出中断事件以确保 UI 隐藏
+      gameBridge.emit('RESTORATION_INTERRUPTED', {
+        targetId: this.target.id,
+        interactionId: this.target.interactionId,
+        progress: this.getProgress(),
+        reason,
+        inRange: false,
+      });
     }
     // 重置 E 键状态
     this.isEKeyHeld = false;
