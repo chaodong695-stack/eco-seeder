@@ -2,6 +2,13 @@ import Phaser from 'phaser';
 import type { InteractionObjectConfig } from './interactionTypes';
 import { INTERACTION_COOLDOWN_MS } from '@/game/config/movementConfig';
 
+/** 视觉更新参数。 */
+export interface InteractionZoneVisualUpdate {
+  color?: number;
+  alpha?: number;
+  scale?: number;
+}
+
 /**
  * 交互区域管理器。
  *
@@ -9,13 +16,17 @@ import { INTERACTION_COOLDOWN_MS } from '@/game/config/movementConfig';
  */
 export class InteractionZone {
   readonly config: InteractionObjectConfig;
-  private readonly gameObject: Phaser.GameObjects.Rectangle;
-  private readonly label: Phaser.GameObjects.Text;
+  private gameObject: Phaser.GameObjects.Rectangle | null;
+  private label: Phaser.GameObjects.Text | null;
+  /** 持有创建此对象的 Scene 引用，用于销毁后验证。 */
+  private readonly scene: Phaser.Scene;
   private isAvailable = false;
   private lastTriggerTime = 0;
+  private destroyed = false;
 
   constructor(scene: Phaser.Scene, config: InteractionObjectConfig) {
     this.config = config;
+    this.scene = scene;
 
     this.gameObject = scene.add.rectangle(
       config.x,
@@ -65,8 +76,90 @@ export class InteractionZone {
     return true;
   }
 
+  /**
+   * 更新视觉外观（颜色、透明度、缩放）。
+   */
+  updateVisual(update: InteractionZoneVisualUpdate): void {
+    if (this.destroyed || !this.gameObject) return;
+    if (!this.isGameObjectValid()) return;
+    if (update.color !== undefined) {
+      this.gameObject.setFillStyle(update.color, update.alpha ?? this.gameObject.alpha);
+    }
+    if (update.alpha !== undefined && update.color === undefined) {
+      this.gameObject.setAlpha(update.alpha);
+    }
+    if (update.scale !== undefined) {
+      this.gameObject.setScale(update.scale);
+    }
+  }
+
+  /**
+   * 获取当前视觉对象（用于场景层面的额外操作）。
+   */
+  getGameObject(): Phaser.GameObjects.Rectangle | null {
+    return this.gameObject;
+  }
+
+  /**
+   * 设置标签文本。
+   *
+   * 不能只检查 wrapper 的 destroyed 标志，因为 Phaser 可能在 Scene 销毁时
+   * 直接销毁 Text 的内部 texture/frame/canvas，而 wrapper 尚未标记 destroyed。
+   * 必须验证 Text 仍属于当前有效 Scene 且未被 Phaser 内部销毁。
+   */
+  setLabelText(text: string): void {
+    if (this.destroyed || !this.label) return;
+    // 验证 label 尚未被 Phaser 内部销毁，且 Scene 仍然活跃
+    if (!this.isTextValid()) return;
+    this.label.setText(text);
+  }
+
+  /** 是否已销毁。 */
+  get isDestroyed(): boolean {
+    return this.destroyed;
+  }
+
   destroy(): void {
-    this.label.destroy();
-    this.gameObject.destroy();
+    if (this.destroyed) return;
+    this.destroyed = true;
+    // 先销毁 label，再销毁 gameObject
+    if (this.label) {
+      this.label.destroy();
+      this.label = null;
+    }
+    if (this.gameObject) {
+      this.gameObject.destroy();
+      this.gameObject = null;
+    }
+  }
+
+  /**
+   * 验证 gameObject Rectangle 对象仍然有效。
+   */
+  private isGameObjectValid(): boolean {
+    if (!this.gameObject) return false;
+    if (!this.scene || !this.scene.sys.isActive()) return false;
+    if (this.gameObject.scene === null || this.gameObject.scene === undefined) return false;
+    return true;
+  }
+
+  /**
+   * 验证 label Text 对象仍然有效。
+   *
+   * Phaser 在 Scene 销毁时会直接销毁子对象的 texture/frame/canvas，
+   * 但 wrapper 的 destroyed 标志可能尚未被设置。
+   * 此方法检查：
+   * 1. label 本身的 active 状态；
+   * 2. Scene 仍然活跃（未 shutdown/destroy）；
+   * 3. label 的 parentContainer 或 scene 仍指向有效 Scene。
+   */
+  private isTextValid(): boolean {
+    if (!this.label) return false;
+    // 检查 Scene 是否仍然活跃
+    if (!this.scene || !this.scene.sys.isActive()) return false;
+    // 检查 label 是否已被 Phaser 内部标记为销毁
+    // Phaser Text 对象销毁后，其 scene 引用会变为 null
+    if (this.label.scene === null || this.label.scene === undefined) return false;
+    return true;
   }
 }

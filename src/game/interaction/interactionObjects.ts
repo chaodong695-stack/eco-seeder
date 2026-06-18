@@ -16,7 +16,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     width: 64,
     height: 64,
     interactionRange: 80,
-    feedbackMessage: '已检查污染区域，正式修复功能将在后续任务中实现。',
+    feedbackMessage: '已检查污染区域，需要先向林工了解修复任务。',
     color: 0x8b4422,
   },
   {

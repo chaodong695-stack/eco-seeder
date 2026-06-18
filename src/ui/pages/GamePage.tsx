@@ -3,11 +3,14 @@ import { GameInstance } from '@/game/bootstrap/GameInstance';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { useTaskStore } from '@/store/taskStore';
+import { useEnvironmentStore } from '@/store/environmentStore';
 import { GameHud } from '@/ui/components/GameHud';
 import { InteractionPrompt } from '@/ui/components/InteractionPrompt';
 import { TaskPanel } from '@/ui/components/TaskPanel';
 import { NpcDialog } from '@/ui/components/NpcDialog';
 import { SettingsPanel } from '@/ui/components/SettingsPanel';
+import { EnvironmentStatusPanel } from '@/ui/components/EnvironmentStatusPanel';
+import { RestorationProgress } from '@/ui/components/RestorationProgress';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -54,6 +57,7 @@ export function GamePage() {
     }
     setIsReady(false);
     useTaskStore.getState().resetTasks();
+    useEnvironmentStore.getState().resetEnvironment();
     returnToStart();
   };
 
@@ -81,6 +85,8 @@ export function GamePage() {
 
       {isReady && <GameHud onReturnToStart={handleReturnToStart} />}
       {isReady && <InteractionPrompt />}
+      {isReady && <EnvironmentStatusPanel />}
+      {isReady && <RestorationProgress />}
       {isReady && isTaskPanelOpen && <TaskPanel />}
       {isReady && isNpcDialogOpen && <NpcDialog />}
       {isReady && isSettingsOpen && <SettingsPanel />}

@@ -3,7 +3,26 @@ import { create } from 'zustand';
 export type AppPage = 'start' | 'character-select' | 'game';
 
 /** 统一输入锁定状态。 */
-export type InputMode = 'gameplay' | 'dialog' | 'settings';
+export type InputMode =
+  | 'gameplay'
+  | 'task'
+  | 'restoration'
+  | 'dialog'
+  | 'settings';
+
+/**
+ * 计算关闭某个 UI 后应该恢复到哪个输入模式。
+ *
+ * 逐个检查其他 UI 是否仍处于打开状态，
+ * 如果仍有 UI 打开则返回对应的输入模式，
+ * 否则恢复 gameplay。
+ */
+function computeModeAfterClose(state: UIState): InputMode {
+  if (state.isNpcDialogOpen) return 'dialog';
+  if (state.isSettingsOpen) return 'settings';
+  if (state.isTaskPanelOpen) return 'task';
+  return 'gameplay';
+}
 
 interface UIState {
   currentPage: AppPage;
@@ -41,17 +60,42 @@ export const useUIStore = create<UIState>((set) => ({
       isSettingsOpen: false,
       inputMode: 'gameplay',
     }),
-  setTaskPanelOpen: (open) => set({ isTaskPanelOpen: open }),
+  setTaskPanelOpen: (open) =>
+    set((state) => {
+      if (open) {
+        // 互斥：修复进行中不允许打开
+        if (state.inputMode === 'restoration') return state;
+        return { isTaskPanelOpen: true, inputMode: 'task' as InputMode };
+      }
+      return {
+        isTaskPanelOpen: false,
+        inputMode: computeModeAfterClose({ ...state, isTaskPanelOpen: false }),
+      };
+    }),
   setNpcDialogOpen: (open, npcId = null) =>
-    set({
-      isNpcDialogOpen: open,
-      currentNpcId: npcId,
-      inputMode: open ? 'dialog' : 'gameplay',
+    set((state) => {
+      if (open) {
+        return {
+          isNpcDialogOpen: true,
+          currentNpcId: npcId,
+          inputMode: 'dialog' as InputMode,
+        };
+      }
+      return {
+        isNpcDialogOpen: false,
+        currentNpcId: npcId,
+        inputMode: computeModeAfterClose({ ...state, isNpcDialogOpen: false }),
+      };
     }),
   setSettingsOpen: (open) =>
-    set({
-      isSettingsOpen: open,
-      inputMode: open ? 'settings' : 'gameplay',
+    set((state) => {
+      if (open) {
+        return { isSettingsOpen: true, inputMode: 'settings' as InputMode };
+      }
+      return {
+        isSettingsOpen: false,
+        inputMode: computeModeAfterClose({ ...state, isSettingsOpen: false }),
+      };
     }),
   setInputMode: (mode) => set({ inputMode: mode }),
   setLoading: (loading) => set({ isLoading: loading }),
