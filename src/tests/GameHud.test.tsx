@@ -20,10 +20,10 @@ describe('GameHud', () => {
     expect(useUIStore.getState().isTaskPanelOpen).toBe(true);
   });
 
-  it('opens NPC dialog on NPC dialog button click', () => {
+  it('opens settings panel on settings icon button click', () => {
     render(<GameHud onReturnToStart={() => {}} />);
-    fireEvent.click(screen.getByText('NPC 对话'));
-    expect(useUIStore.getState().isNpcDialogOpen).toBe(true);
+    fireEvent.click(screen.getByTitle('设置'));
+    expect(useUIStore.getState().isSettingsOpen).toBe(true);
   });
 
   it('opens settings panel on settings button click', () => {

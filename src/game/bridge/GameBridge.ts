@@ -11,17 +11,60 @@ import type {
   InteractionUnavailablePayload,
 } from '@/game/interaction/interactionTypes';
 
+// ─── DEV-03 新增事件 payload ─────────────────────────────
+
+/** NPC 对话打开事件。 */
+export interface NpcDialogOpenPayload {
+  npcId: string;
+  npcName: string;
+  npcRole: string;
+}
+
+/** NPC 对话关闭事件。 */
+export interface NpcDialogClosePayload {
+  npcId: string;
+}
+
+/** 任务接取事件。 */
+export interface TaskAcceptedPayload {
+  taskId: string;
+  npcId: string;
+}
+
+/** 任务目标完成事件。 */
+export interface TaskObjectiveCompletedPayload {
+  taskId: string;
+  interactionId: string;
+}
+
+/** 任务提交完成事件。 */
+export interface TaskCompletedPayload {
+  taskId: string;
+  npcId: string;
+  reward: { ecoPoints: number; reputation: number };
+}
+
+/** 任务反馈消息事件。 */
+export interface TaskFeedbackPayload {
+  message: string;
+}
+
 export type GameBridgeEventMap = {
   GAME_READY: { mapId: string };
   PLAYER_INTERACT: { targetId: string };
-  NPC_DIALOG_OPEN: { npcId: string };
-  TASK_PROGRESS: { taskId: string; progress: number };
   DUNGEON_STARTED: { dungeonId: string };
   WEATHER_CHANGED: { weather: string };
   MAP_STATE_UPDATED: { summary: string };
   INTERACTION_AVAILABLE: InteractionAvailablePayload;
   INTERACTION_UNAVAILABLE: InteractionUnavailablePayload;
   INTERACTION_TRIGGERED: InteractionTriggeredPayload;
+  // DEV-03 新增事件
+  NPC_DIALOG_OPEN: NpcDialogOpenPayload;
+  NPC_DIALOG_CLOSE: NpcDialogClosePayload;
+  TASK_ACCEPTED: TaskAcceptedPayload;
+  TASK_OBJECTIVE_COMPLETED: TaskObjectiveCompletedPayload;
+  TASK_COMPLETED: TaskCompletedPayload;
+  TASK_FEEDBACK: TaskFeedbackPayload;
 };
 
 type EventHandler<T = unknown> = (payload: T) => void;

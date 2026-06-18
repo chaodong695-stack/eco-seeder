@@ -1,58 +1,154 @@
-import { useState } from 'react';
+/**
+ * NPC 对话框组件。
+ *
+ * DEV-03 重写：
+ * - 对话内容由 npcDialogResolver 根据任务状态解析，不写死在组件中；
+ * - 对话选项触发对应任务动作；
+ * - 打开对话时玩家移动通过 UI Store inputMode 暂停；
+ * - 关闭后恢复游戏操作。
+ */
+
+import { useCallback, useEffect, useMemo } from 'react';
 import { useUIStore } from '@/store/uiStore';
-import type { NpcDialogSummary } from '@/types';
+import { useTaskStore } from '@/store/taskStore';
+import { findNpcById } from '@/game/npc/npcDefinitions';
+import { resolveDialog, type DialogActionType } from '@/game/npc/npcDialogResolver';
+import { TASK_DEFINITIONS } from '@/game/tasks/taskDefinitions';
+import { gameBridge } from '@/game/bridge/GameBridge';
 import styles from './NpcDialog.module.css';
 
-// 占位 NPC 对话数据
-const PLACEHOLDER_DIALOG: NpcDialogSummary = {
-  npcId: 'npc.environmental_monitor',
-  npcName: '环境监测员',
-  npcRole: '环境监测',
-  lines: [
-    '欢迎来到雾港旧工业区。',
-    '这里的生态状况不容乐观，我们需要你的帮助。',
-    '请先查看任务面板，了解当前的修复工作。',
-  ],
-  hasTask: true,
-};
-
 export function NpcDialog() {
+  const currentNpcId = useUIStore((s) => s.currentNpcId);
   const setNpcDialogOpen = useUIStore((s) => s.setNpcDialogOpen);
-  const [lineIndex, setLineIndex] = useState(0);
+  const tasks = useTaskStore((s) => s.tasks);
+  const acceptTask = useTaskStore((s) => s.acceptTask);
+  const submitTask = useTaskStore((s) => s.submitTask);
 
-  const handleContinue = () => {
-    if (lineIndex < PLACEHOLDER_DIALOG.lines.length - 1) {
-      setLineIndex(lineIndex + 1);
-    } else {
-      setNpcDialogOpen(false);
+  // 查找当前 NPC 配置
+  const npcDef = currentNpcId ? findNpcById(currentNpcId) : undefined;
+
+  // 查找该 NPC 发布的任务
+  const taskDef = useMemo(
+    () => TASK_DEFINITIONS.find((t) => t.giverNpcId === currentNpcId),
+    [currentNpcId],
+  );
+
+  // 当前任务状态
+  const taskStatus = taskDef ? tasks[taskDef.id]?.status : undefined;
+
+  // 解析对话内容
+  const dialog = useMemo(() => {
+    if (!npcDef) return null;
+    // 如果没有关联任务，显示默认对话
+    const status = taskStatus ?? 'available';
+    return resolveDialog(npcDef.displayName, npcDef.role, status);
+  }, [npcDef, taskStatus]);
+
+  // 关闭对话
+  const closeDialog = useCallback(() => {
+    const npcId = currentNpcId;
+    setNpcDialogOpen(false);
+    if (npcId) {
+      gameBridge.emit('NPC_DIALOG_CLOSE', { npcId });
+    }
+  }, [currentNpcId, setNpcDialogOpen]);
+
+  // 处理选项点击
+  const handleOption = (action: DialogActionType) => {
+    switch (action) {
+      case 'accept_task': {
+        if (taskDef) {
+          const success = acceptTask(taskDef.id);
+          if (success) {
+            gameBridge.emit('TASK_ACCEPTED', {
+              taskId: taskDef.id,
+              npcId: taskDef.giverNpcId,
+            });
+          }
+        }
+        closeDialog();
+        break;
+      }
+      case 'submit_task': {
+        if (taskDef && currentNpcId) {
+          const success = submitTask(taskDef.id, currentNpcId);
+          if (success) {
+            gameBridge.emit('TASK_COMPLETED', {
+              taskId: taskDef.id,
+              npcId: currentNpcId,
+              reward: taskDef.reward,
+            });
+            gameBridge.emit('TASK_FEEDBACK', {
+              message: `任务完成！获得生态点数 ${taskDef.reward.ecoPoints}，声望 ${taskDef.reward.reputation}。`,
+            });
+          }
+        }
+        closeDialog();
+        break;
+      }
+      case 'dismiss':
+      case 'close':
+        closeDialog();
+        break;
     }
   };
 
+  // 按 Escape 关闭
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDialog();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+    };
+  }, [closeDialog]);
+
+  // 没有有效对话时不渲染
+  if (!dialog || !npcDef) return null;
+
   return (
-    <div className={styles.overlay} onClick={() => setNpcDialogOpen(false)}>
+    <div className={styles.overlay} onClick={closeDialog}>
       <div className={styles.dialogBox} onClick={(e) => e.stopPropagation()}>
         <div className={styles.dialogHeader}>
           <div className={styles.npcInfo}>
             <div className={styles.npcAvatar}>👤</div>
             <div>
-              <div className={styles.npcName}>{PLACEHOLDER_DIALOG.npcName}</div>
-              <div className={styles.npcRole}>{PLACEHOLDER_DIALOG.npcRole}</div>
+              <div className={styles.npcName}>{dialog.npcName}</div>
+              <div className={styles.npcRole}>{dialog.npcRole}</div>
             </div>
           </div>
-          <button
-            className={styles.closeBtn}
-            onClick={() => setNpcDialogOpen(false)}
-          >
+          <button className={styles.closeBtn} onClick={closeDialog}>
             ✕
           </button>
         </div>
         <div className={styles.dialogBody}>
-          <p className={styles.dialogLine}>{PLACEHOLDER_DIALOG.lines[lineIndex]}</p>
+          {dialog.lines.map((line, idx) => (
+            <p key={idx} className={styles.dialogLine}>
+              {line}
+            </p>
+          ))}
         </div>
         <div className={styles.dialogFooter}>
-          <button className={styles.continueBtn} onClick={handleContinue}>
-            {lineIndex < PLACEHOLDER_DIALOG.lines.length - 1 ? '继续' : '关闭'}
-          </button>
+          {dialog.options.map((option, idx) => (
+            <button
+              key={idx}
+              className={`${styles.optionBtn} ${
+                option.action === 'accept_task'
+                  ? styles.optionAccept
+                  : option.action === 'submit_task'
+                    ? styles.optionSubmit
+                    : styles.optionDefault
+              }`}
+              onClick={() => handleOption(option.action)}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>
