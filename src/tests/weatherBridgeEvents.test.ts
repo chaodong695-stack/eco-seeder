@@ -161,4 +161,38 @@ describe('DEV-05 GameBridge events', () => {
       expect(count).toBe(0);
     });
   });
+
+  describe('DEV_WEATHER_PREVIEW', () => {
+    it('emits with correct payload for preview weather', () => {
+      let received: { weather: string | null } | null = null;
+      const unsub = gameBridge.on('DEV_WEATHER_PREVIEW', (payload) => {
+        received = payload;
+      });
+
+      gameBridge.emit('DEV_WEATHER_PREVIEW', { weather: 'fog' });
+      expect(received).toEqual({ weather: 'fog' });
+      unsub();
+    });
+
+    it('emits with null when exiting preview', () => {
+      let received: { weather: string | null } | null = null;
+      const unsub = gameBridge.on('DEV_WEATHER_PREVIEW', (payload) => {
+        received = payload;
+      });
+
+      gameBridge.emit('DEV_WEATHER_PREVIEW', { weather: null });
+      expect(received).toEqual({ weather: null });
+      unsub();
+    });
+
+    it('unsubscribe stops receiving', () => {
+      let count = 0;
+      const unsub = gameBridge.on('DEV_WEATHER_PREVIEW', () => { count++; });
+      gameBridge.emit('DEV_WEATHER_PREVIEW', { weather: 'clear' });
+      expect(count).toBe(1);
+      unsub();
+      gameBridge.emit('DEV_WEATHER_PREVIEW', { weather: 'clear' });
+      expect(count).toBe(1);
+    });
+  });
 });

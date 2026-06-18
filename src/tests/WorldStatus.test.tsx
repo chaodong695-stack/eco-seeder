@@ -158,4 +158,95 @@ describe('WorldStatus', () => {
     rerender(<WorldStatus />);
     expect(screen.getByText('夜晚')).toBeInTheDocument();
   });
+
+  // ─── DEV 天气预览测试 ──────────────────────────────
+
+  it('displays preview weather with (预览) suffix when devWeatherPreview is set', () => {
+    useWorldStore.setState({
+      timeSnapshot: {
+        mode: 'realtime',
+        localDate: '2024-06-15',
+        localMinutes: 720,
+        timezoneOffsetMinutes: 480,
+        phase: 'day',
+        demoPreset: null,
+      },
+      weatherSnapshot: {
+        date: '2024-06-15',
+        mapId: 'map.urban_wasteland',
+        weather: 'overcast',
+        displayName: '阴天',
+        intensity: 0.5,
+        visibility: 0.8,
+        timelineEntryId: 'test',
+      },
+      devWeatherPreview: 'fog',
+      isInitialized: true,
+    });
+
+    render(<WorldStatus />);
+    expect(screen.getByText('雾（预览）')).toBeInTheDocument();
+  });
+
+  it('displays formal weather when devWeatherPreview is null', () => {
+    useWorldStore.setState({
+      timeSnapshot: {
+        mode: 'realtime',
+        localDate: '2024-06-15',
+        localMinutes: 720,
+        timezoneOffsetMinutes: 480,
+        phase: 'day',
+        demoPreset: null,
+      },
+      weatherSnapshot: {
+        date: '2024-06-15',
+        mapId: 'map.urban_wasteland',
+        weather: 'overcast',
+        displayName: '阴天',
+        intensity: 0.5,
+        visibility: 0.8,
+        timelineEntryId: 'test',
+      },
+      devWeatherPreview: null,
+      isInitialized: true,
+    });
+
+    render(<WorldStatus />);
+    expect(screen.getByText('阴天')).toBeInTheDocument();
+  });
+
+  it('updates display when devWeatherPreview changes', () => {
+    useWorldStore.setState({
+      timeSnapshot: {
+        mode: 'realtime',
+        localDate: '2024-06-15',
+        localMinutes: 720,
+        timezoneOffsetMinutes: 480,
+        phase: 'day',
+        demoPreset: null,
+      },
+      weatherSnapshot: {
+        date: '2024-06-15',
+        mapId: 'map.urban_wasteland',
+        weather: 'overcast',
+        displayName: '阴天',
+        intensity: 0.5,
+        visibility: 0.8,
+        timelineEntryId: 'test',
+      },
+      devWeatherPreview: null,
+      isInitialized: true,
+    });
+
+    const { rerender } = render(<WorldStatus />);
+    expect(screen.getByText('阴天')).toBeInTheDocument();
+
+    useWorldStore.setState({ devWeatherPreview: 'clear' });
+    rerender(<WorldStatus />);
+    expect(screen.getByText('晴朗（预览）')).toBeInTheDocument();
+
+    useWorldStore.setState({ devWeatherPreview: null });
+    rerender(<WorldStatus />);
+    expect(screen.getByText('阴天')).toBeInTheDocument();
+  });
 });

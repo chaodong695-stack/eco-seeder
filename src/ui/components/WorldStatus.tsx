@@ -8,11 +8,17 @@
 
 import { useWorldStore } from '@/store/worldStore';
 import { DAY_PHASE_DISPLAY_NAMES, TIME_MODE_DISPLAY_NAMES } from '@/domain/time/timeTypes';
+import { WEATHER_DEFINITIONS } from '@/domain/weather/weatherTypes';
 import styles from './WorldStatus.module.css';
 
 export function WorldStatus() {
   const timeSnapshot = useWorldStore((s) => s.timeSnapshot);
   const weatherSnapshot = useWorldStore((s) => s.weatherSnapshot);
+  const devWeatherPreview = useWorldStore((s) => s.devWeatherPreview);
+
+  const displayWeather = devWeatherPreview
+    ? WEATHER_DEFINITIONS[devWeatherPreview].displayName
+    : weatherSnapshot.displayName;
 
   return (
     <div className={styles.worldStatus}>
@@ -25,7 +31,7 @@ export function WorldStatus() {
       <div className={styles.statusItem}>
         <span className={styles.statusLabel}>天气</span>
         <span className={styles.statusValue}>
-          {weatherSnapshot.displayName}
+          {displayWeather}{devWeatherPreview && '（预览）'}
         </span>
       </div>
       <div className={styles.statusItem}>

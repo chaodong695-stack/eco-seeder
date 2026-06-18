@@ -13,6 +13,7 @@ import { create } from 'zustand';
 import type { WorldTimeSnapshot } from '@/domain/time/timeTypes';
 import type { DemoTimePreset, TimeMode } from '@/domain/time/timeTypes';
 import type { WeatherSnapshot } from '@/domain/weather/weatherTypes_ext';
+import type { WeatherType } from '@/domain/weather/weatherTypes';
 import type { WeatherTimeline } from '@/domain/weather/weatherTimelineGenerator';
 import {
   getTimeService,
@@ -59,6 +60,12 @@ interface WorldStoreState {
   timeline: WeatherTimeline | null;
   /** 时间服务是否已初始化。 */
   isInitialized: boolean;
+  /**
+   * 开发环境天气预览覆盖（仅 `import.meta.env.DEV` 为 true 时使用）。
+   *
+   * 不修改正式天气时间线，退出预览后恢复 `weatherSnapshot`。
+   */
+  devWeatherPreview: WeatherType | null;
 
   /** 初始化世界状态（幂等）。 */
   init: (mode?: TimeMode, demoPreset?: DemoTimePreset | null) => void;
@@ -69,12 +76,19 @@ interface WorldStoreState {
   /** 重置世界状态到安全初始值。 */
   resetWorld: () => void;
 
+  /** 设置开发天气预览（不修改正式时间线）。 */
+  setDevWeatherPreview: (weather: WeatherType | null) => void;
+  /** 退出开发天气预览，恢复正式天气。 */
+  exitDevWeatherPreview: () => void;
+
   /** 获取当前时间快照（只读）。 */
   getCurrentWorldTime: () => WorldTimeSnapshot;
   /** 获取当前天气快照（只读）。 */
   getCurrentWeather: () => WeatherSnapshot;
   /** 获取天气时间线（只读）。 */
   getWeatherTimeline: () => WeatherTimeline | null;
+  /** 获取当前实际显示的天气（预览优先，只读）。 */
+  getDisplayWeather: () => WeatherType;
 }
 
 let timeListener: (() => void) | null = null;
@@ -102,6 +116,7 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
   weatherSnapshot: INITIAL_WEATHER_SNAPSHOT,
   timeline: null,
   isInitialized: false,
+  devWeatherPreview: null,
 
   init: (mode: TimeMode = 'realtime', demoPreset: DemoTimePreset | null = null) => {
     const state = get();
@@ -211,10 +226,23 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
       weatherSnapshot: INITIAL_WEATHER_SNAPSHOT,
       timeline: null,
       isInitialized: false,
+      devWeatherPreview: null,
     });
+  },
+
+  setDevWeatherPreview: (weather: WeatherType | null) => {
+    set({ devWeatherPreview: weather });
+  },
+
+  exitDevWeatherPreview: () => {
+    set({ devWeatherPreview: null });
   },
 
   getCurrentWorldTime: () => get().timeSnapshot,
   getCurrentWeather: () => get().weatherSnapshot,
   getWeatherTimeline: () => get().timeline,
+  getDisplayWeather: () => {
+    const state = get();
+    return state.devWeatherPreview ?? state.weatherSnapshot.weather;
+  },
 }));

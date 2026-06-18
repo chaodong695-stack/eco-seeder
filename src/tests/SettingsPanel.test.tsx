@@ -88,4 +88,62 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByText('黄昏'));
     expect(useUIStore.getState().inputMode).toBe('settings');
   });
+
+  // ─── DEV 天气预览测试 ──────────────────────────────
+
+  it('renders dev weather preview section in DEV mode', () => {
+    render(<SettingsPanel />);
+    expect(screen.getByText('天气预览（开发）')).toBeInTheDocument();
+    expect(screen.getByText('晴朗')).toBeInTheDocument();
+    expect(screen.getByText('阴天')).toBeInTheDocument();
+    expect(screen.getByText('小雨')).toBeInTheDocument();
+    expect(screen.getByText('暴雨')).toBeInTheDocument();
+    expect(screen.getByText('雾')).toBeInTheDocument();
+  });
+
+  it('sets dev weather preview when clicking a weather button', () => {
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByText('雾'));
+    expect(useWorldStore.getState().devWeatherPreview).toBe('fog');
+  });
+
+  it('exits dev weather preview when clicking the same weather again', () => {
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByText('晴朗'));
+    expect(useWorldStore.getState().devWeatherPreview).toBe('clear');
+    fireEvent.click(screen.getByText('晴朗'));
+    expect(useWorldStore.getState().devWeatherPreview).toBeNull();
+  });
+
+  it('shows exit preview button when preview is active', () => {
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByText('暴雨'));
+    expect(screen.getByText('退出预览')).toBeInTheDocument();
+  });
+
+  it('exit preview button clears dev weather preview', () => {
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByText('小雨'));
+    expect(useWorldStore.getState().devWeatherPreview).toBe('light_rain');
+    fireEvent.click(screen.getByText('退出预览'));
+    expect(useWorldStore.getState().devWeatherPreview).toBeNull();
+  });
+
+  it('switching weather preview does not affect formal timeline', () => {
+    useWorldStore.getState().init('realtime');
+    const timelineBefore = useWorldStore.getState().getWeatherTimeline();
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByText('雾'));
+    fireEvent.click(screen.getByText('晴朗'));
+    fireEvent.click(screen.getByText('退出预览'));
+    const timelineAfter = useWorldStore.getState().getWeatherTimeline();
+    expect(timelineAfter).toBe(timelineBefore);
+  });
+
+  it('weather preview does not produce input mode conflict', () => {
+    render(<SettingsPanel />);
+    expect(useUIStore.getState().inputMode).toBe('settings');
+    fireEvent.click(screen.getByText('暴雨'));
+    expect(useUIStore.getState().inputMode).toBe('settings');
+  });
 });

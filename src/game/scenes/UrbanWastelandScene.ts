@@ -136,6 +136,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private currentDayPhase: DayPhase | null = null;
   /** 当前天气。 */
   private currentWeatherType: WeatherType | null = null;
+  /** 当前开发天气预览（仅开发环境）。 */
+  private currentDevWeatherPreview: WeatherType | null = null;
 
   constructor() {
     super({ key: SCENE_KEY });
@@ -834,9 +836,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
     worldStore.init();
 
     // 应用当前昼夜和天气视觉
-    const { timeSnapshot, weatherSnapshot } = useWorldStore.getState();
+    const { timeSnapshot, weatherSnapshot, devWeatherPreview } = useWorldStore.getState();
     this.applyDayPhase(timeSnapshot.phase);
-    this.applyWeatherVisual(weatherSnapshot.weather);
+    // 预览优先
+    this.applyWeatherVisual(devWeatherPreview ?? weatherSnapshot.weather);
 
     // 发射初始事件
     gameBridge.emit('WORLD_TIME_CHANGED', {
@@ -876,8 +879,26 @@ export class UrbanWastelandScene extends Phaser.Scene {
         });
       }
 
-      // 天气变化
-      if (state.weatherSnapshot.weather !== this.currentWeatherType) {
+      // 开发天气预览变化 — 不影响正式天气时间线
+      if (state.devWeatherPreview !== this.currentDevWeatherPreview) {
+        this.currentDevWeatherPreview = state.devWeatherPreview;
+        const displayWeather = state.devWeatherPreview ?? state.weatherSnapshot.weather;
+        this.applyWeatherVisual(displayWeather);
+        gameBridge.emit('DEV_WEATHER_PREVIEW', { weather: state.devWeatherPreview });
+        // 预览退出时恢复正式天气
+        if (state.devWeatherPreview === null) {
+          gameBridge.emit('WEATHER_CHANGED_V2', {
+            previousWeather: null,
+            current: state.weatherSnapshot,
+          });
+        }
+      }
+
+      // 天气变化（仅非预览时更新视觉）
+      if (
+        state.devWeatherPreview === null &&
+        state.weatherSnapshot.weather !== this.currentWeatherType
+      ) {
         const prevWeather = this.currentWeatherType;
         this.applyWeatherVisual(state.weatherSnapshot.weather);
         gameBridge.emit('WEATHER_CHANGED_V2', {

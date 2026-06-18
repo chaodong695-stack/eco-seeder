@@ -20,6 +20,7 @@ import type {
 } from '@/game/restoration/restorationTypes';
 import type { WorldTimeSnapshot, DayPhase, TimeMode } from '@/domain/time/timeTypes';
 import type { WeatherSnapshot } from '@/domain/weather/weatherTypes_ext';
+import type { WeatherType } from '@/domain/weather/weatherTypes';
 import type { WeatherTimeline } from '@/domain/weather/weatherTimelineGenerator';
 
 // ─── DEV-03 新增事件 payload ─────────────────────────────
@@ -87,6 +88,11 @@ export interface WeatherChangedPayloadV2 {
   current: WeatherSnapshot;
 }
 
+/** 开发天气预览切换事件 payload（仅开发环境）。 */
+export interface DevWeatherPreviewPayload {
+  weather: WeatherType | null;
+}
+
 export type GameBridgeEventMap = {
   GAME_READY: { mapId: string };
   PLAYER_INTERACT: { targetId: string };
@@ -115,6 +121,8 @@ export type GameBridgeEventMap = {
   DAY_PHASE_CHANGED: DayPhaseChangedPayload;
   WEATHER_TIMELINE_GENERATED: WeatherTimelineGeneratedPayload;
   WEATHER_CHANGED_V2: WeatherChangedPayloadV2;
+  // DEV-05 开发天气预览事件（仅开发环境）
+  DEV_WEATHER_PREVIEW: DevWeatherPreviewPayload;
 };
 
 type EventHandler<T = unknown> = (payload: T) => void;

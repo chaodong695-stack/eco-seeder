@@ -3,6 +3,8 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useWorldStore } from '@/store/worldStore';
 import type { DemoTimePreset } from '@/domain/time/timeTypes';
 import { DAY_PHASE_DISPLAY_NAMES } from '@/domain/time/timeTypes';
+import { ALL_WEATHER_TYPES, WEATHER_DEFINITIONS } from '@/domain/weather/weatherTypes';
+import type { WeatherType } from '@/domain/weather/weatherTypes';
 import styles from './SettingsPanel.module.css';
 
 const TIME_PRESET_OPTIONS: { value: DemoTimePreset | null; label: string }[] = [
@@ -32,6 +34,9 @@ export function SettingsPanel() {
   } = useSettingsStore();
 
   const setWorldTimeMode = useWorldStore((s) => s.setTimeMode);
+  const devWeatherPreview = useWorldStore((s) => s.devWeatherPreview);
+  const setDevWeatherPreview = useWorldStore((s) => s.setDevWeatherPreview);
+  const exitDevWeatherPreview = useWorldStore((s) => s.exitDevWeatherPreview);
 
   const handleTimePresetChange = (value: DemoTimePreset | null) => {
     if (value === null) {
@@ -40,6 +45,14 @@ export function SettingsPanel() {
     } else {
       setTimeMode('demo', value);
       setWorldTimeMode('demo', value);
+    }
+  };
+
+  const handleDevWeatherPreview = (weather: WeatherType) => {
+    if (devWeatherPreview === weather) {
+      exitDevWeatherPreview();
+    } else {
+      setDevWeatherPreview(weather);
     }
   };
 
@@ -78,6 +91,37 @@ export function SettingsPanel() {
               })}
             </div>
           </div>
+
+          {import.meta.env.DEV && (
+            <div className={styles.devWeatherPreviewGroup}>
+              <label className={styles.settingLabel}>
+                <span>天气预览（开发）</span>
+              </label>
+              <div className={styles.timePresetGroup}>
+                {ALL_WEATHER_TYPES.map((weather) => {
+                  const isSelected = devWeatherPreview === weather;
+                  const displayName = WEATHER_DEFINITIONS[weather].displayName;
+                  return (
+                    <button
+                      key={weather}
+                      className={`${styles.presetBtn} ${isSelected ? styles.presetBtnActive : ''}`}
+                      onClick={() => handleDevWeatherPreview(weather)}
+                    >
+                      {displayName}
+                    </button>
+                  );
+                })}
+                {devWeatherPreview !== null && (
+                  <button
+                    className={styles.presetBtn}
+                    onClick={() => exitDevWeatherPreview()}
+                  >
+                    退出预览
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className={styles.settingGroup}>
             <label className={styles.settingLabel}>
