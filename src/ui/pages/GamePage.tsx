@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { GameInstance } from '@/game/bootstrap/GameInstance';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
+import { useTaskStore } from '@/store/taskStore';
 import { GameHud } from '@/ui/components/GameHud';
 import { InteractionPrompt } from '@/ui/components/InteractionPrompt';
 import { TaskPanel } from '@/ui/components/TaskPanel';
@@ -52,6 +53,7 @@ export function GamePage() {
       gameInstanceRef.current = null;
     }
     setIsReady(false);
+    useTaskStore.getState().resetTasks();
     returnToStart();
   };
 

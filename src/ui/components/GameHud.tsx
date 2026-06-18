@@ -8,7 +8,6 @@ interface GameHudProps {
 
 export function GameHud({ onReturnToStart }: GameHudProps) {
   const setTaskPanelOpen = useUIStore((s) => s.setTaskPanelOpen);
-  const setNpcDialogOpen = useUIStore((s) => s.setNpcDialogOpen);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
 
   return (
@@ -34,12 +33,6 @@ export function GameHud({ onReturnToStart }: GameHudProps) {
           onClick={() => setTaskPanelOpen(true)}
         >
           任务
-        </button>
-        <button
-          className={styles.bottomBtn}
-          onClick={() => setNpcDialogOpen(true, 'npc.placeholder')}
-        >
-          NPC 对话
         </button>
         <button
           className={styles.bottomBtn}

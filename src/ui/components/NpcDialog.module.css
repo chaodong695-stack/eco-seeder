@@ -5,7 +5,7 @@
   align-items: flex-end;
   justify-content: center;
   background: rgba(8, 20, 23, 0.5);
-  z-index: 20;
+  z-index: 30;
   pointer-events: auto;
   padding-bottom: var(--spacing-xl);
 }
@@ -91,13 +91,49 @@
   padding: var(--spacing-sm) var(--spacing-md);
   display: flex;
   justify-content: flex-end;
+  gap: var(--spacing-sm);
   border-top: var(--border-width-normal) solid var(--color-border);
+  flex-wrap: wrap;
 }
 
-.continueBtn {
+.optionBtn {
   padding: 8px 24px;
   font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-panel-light);
+  border: var(--border-width-normal) solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.optionBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.optionAccept {
   color: var(--color-bg-deep);
   background: var(--color-primary);
-  border-radius: var(--radius-sm);
+  border-color: var(--color-primary);
+  font-weight: 600;
+}
+
+.optionAccept:hover {
+  color: var(--color-bg-deep);
+  opacity: 0.9;
+}
+
+.optionSubmit {
+  color: var(--color-bg-deep);
+  background: var(--color-eco-green);
+  border-color: var(--color-eco-green);
+  font-weight: 600;
+}
+
+.optionSubmit:hover {
+  color: var(--color-bg-deep);
+  opacity: 0.9;
+}
+
+.optionDefault {
+  color: var(--color-text-secondary);
 }
