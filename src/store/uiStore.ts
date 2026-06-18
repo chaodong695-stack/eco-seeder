@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export type AppPage = 'start' | 'character-select' | 'game';
 
 /** 统一输入锁定状态。 */
-export type InputMode = 'gameplay' | 'dialog' | 'settings';
+export type InputMode = 'gameplay' | 'restoration' | 'dialog' | 'settings';
 
 interface UIState {
   currentPage: AppPage;

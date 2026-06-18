@@ -9,6 +9,8 @@ interface GameHudProps {
 export function GameHud({ onReturnToStart }: GameHudProps) {
   const setTaskPanelOpen = useUIStore((s) => s.setTaskPanelOpen);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
+  const inputMode = useUIStore((s) => s.inputMode);
+  const isRestoration = inputMode === 'restoration';
 
   return (
     <div className={styles.hud}>
@@ -19,6 +21,7 @@ export function GameHud({ onReturnToStart }: GameHudProps) {
           <button
             className={styles.iconBtn}
             title="设置"
+            disabled={isRestoration}
             onClick={() => setSettingsOpen(true)}
           >
             ⚙
@@ -30,12 +33,14 @@ export function GameHud({ onReturnToStart }: GameHudProps) {
       <div className={styles.bottomBar}>
         <button
           className={styles.bottomBtn}
+          disabled={isRestoration}
           onClick={() => setTaskPanelOpen(true)}
         >
           任务
         </button>
         <button
           className={styles.bottomBtn}
+          disabled={isRestoration}
           onClick={() => setSettingsOpen(true)}
         >
           设置

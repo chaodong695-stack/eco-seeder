@@ -2,6 +2,13 @@ import Phaser from 'phaser';
 import type { InteractionObjectConfig } from './interactionTypes';
 import { INTERACTION_COOLDOWN_MS } from '@/game/config/movementConfig';
 
+/** 视觉更新参数。 */
+export interface InteractionZoneVisualUpdate {
+  color?: number;
+  alpha?: number;
+  scale?: number;
+}
+
 /**
  * 交互区域管理器。
  *
@@ -63,6 +70,35 @@ export class InteractionZone {
 
     this.lastTriggerTime = currentTime;
     return true;
+  }
+
+  /**
+   * 更新视觉外观（颜色、透明度、缩放）。
+   */
+  updateVisual(update: InteractionZoneVisualUpdate): void {
+    if (update.color !== undefined) {
+      this.gameObject.setFillStyle(update.color, update.alpha ?? this.gameObject.alpha);
+    }
+    if (update.alpha !== undefined && update.color === undefined) {
+      this.gameObject.setAlpha(update.alpha);
+    }
+    if (update.scale !== undefined) {
+      this.gameObject.setScale(update.scale);
+    }
+  }
+
+  /**
+   * 获取当前视觉对象（用于场景层面的额外操作）。
+   */
+  getGameObject(): Phaser.GameObjects.Rectangle {
+    return this.gameObject;
+  }
+
+  /**
+   * 设置标签文本。
+   */
+  setLabelText(text: string): void {
+    this.label.setText(text);
   }
 
   destroy(): void {

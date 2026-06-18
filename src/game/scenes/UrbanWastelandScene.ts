@@ -15,6 +15,14 @@
  * - 污染物堆交互接入任务目标；
  * - 输入锁定（dialog / settings 模式暂停移动）；
  * - 任务状态通过 TaskStore 管理事件。
+ *
+ * DEV-04 扩展：
+ * - 污染物堆升级为按住 E 持续清理机制；
+ * - 集成 RestorationController 管理修复行为状态机；
+ * - 修复进度通过 GameBridge 同步到 React UI；
+ * - 环境效果通过 EnvironmentStore 管理；
+ * - 场景视觉阶段由环境状态驱动（polluted → recovering）；
+ * - 输入模式扩展 restoration 状态。
  */
 
 import Phaser from 'phaser';
@@ -27,14 +35,23 @@ import { INTERACTION_OBJECTS } from '../interaction/interactionObjects';
 import { WORLD_BOUNDS, CAMERA_FOLLOW } from '../config/movementConfig';
 import { NPC_DEFINITIONS } from '../npc/npcDefinitions';
 import type { NpcDefinition } from '../npc/npcTypes';
-import { findTaskById } from '../tasks/taskDefinitions';
 import { useTaskStore } from '@/store/taskStore';
 import { useUIStore } from '@/store/uiStore';
+import { useEnvironmentStore } from '@/store/environmentStore';
+import {
+  POLLUTION_ZONE_01_TARGET,
+  findRestorationTargetByInteractionId,
+} from '../restoration/restorationDefinitions';
+import { RestorationController } from '../restoration/RestorationController';
+import type { RestorationVisualStage } from '../restoration/restorationTypes';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
 
 /** 首个任务 ID 常量。 */
 const FIRST_TASK_ID = 'task.urban_wasteland.pollution_cleanup_01';
+
+/** 污染物堆交互对象 ID。 */
+const POLLUTION_ZONE_INTERACTION_ID = 'interaction.pollution_zone_01';
 
 /** 静态障碍物配置 — 碰撞区域与视觉轮廓一致。 */
 interface ObstacleConfig {
@@ -73,8 +90,14 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private interactionZones: InteractionZone[] = [];
   private npcEntities: NpcEntity[] = [];
 
+  /** 背景矩形引用 — 用于视觉阶段变化。 */
+  private backgroundRect!: Phaser.GameObjects.Rectangle;
+  /** 修复区域附近的占位植被图形列表。 */
+  private vegetationGraphics: Phaser.GameObjects.Rectangle[] = [];
+
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: Record<string, Phaser.Input.Keyboard.Key>;
+  private eKey!: Phaser.Input.Keyboard.Key;
 
   private interactionHintText!: Phaser.GameObjects.Text;
 
@@ -86,8 +109,13 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
   /** UI Store 输入模式订阅取消函数。 */
   private unsubInputMode: (() => void) | null = null;
+  /** 视觉阶段变化事件取消函数。 */
+  private unsubVisualStage: (() => void) | null = null;
   /** 当前输入模式。 */
-  private inputMode: 'gameplay' | 'dialog' | 'settings' = 'gameplay';
+  private inputMode: 'gameplay' | 'restoration' | 'dialog' | 'settings' = 'gameplay';
+
+  /** 修复行为控制器。 */
+  private restorationController: RestorationController | null = null;
 
   constructor() {
     super({ key: SCENE_KEY });
@@ -112,8 +140,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.effectsLayer.setDepth(40);
 
     // 背景
-    const skyBg = this.add.rectangle(W / 2, H / 2, W, H, 0x1a2a2e);
-    this.backgroundLayer.add(skyBg);
+    this.backgroundRect = this.add.rectangle(W / 2, H / 2, W, H, 0x1a2a2e);
+    this.backgroundLayer.add(this.backgroundRect);
 
     // 远处建筑轮廓（纯视觉装饰，不参与碰撞）
     this.createPlaceholderBuildings();
@@ -131,7 +159,6 @@ export class UrbanWastelandScene extends Phaser.Scene {
     for (const obs of OBSTACLES) {
       const rect = this.add.rectangle(obs.x, obs.y, obs.width, obs.height, obs.color);
       this.midgroundLayer.add(rect);
-      // 为视觉对象添加静态物理体
       this.physics.add.existing(rect, true);
       const body = rect.body as Phaser.Physics.Arcade.StaticBody;
       body.setSize(obs.width, obs.height);
@@ -151,6 +178,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // NPC
     this.createNpcs();
+
+    // 修复控制器初始化
+    this.restorationController = new RestorationController(POLLUTION_ZONE_01_TARGET);
 
     // 交互提示文本（跟随摄像机）
     this.interactionHintText = this.add
@@ -190,23 +220,42 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // 输入
     this.setupInput();
 
-    // 订阅 UI 输入模式变化（不因重复进入场景重复注册）
+    // 订阅 UI 输入模式变化
     this.setupInputModeSubscription();
+
+    // 根据已有环境状态恢复视觉阶段
+    this.restoreVisualStage();
+
+    // 监听视觉阶段变化事件
+    this.unsubVisualStage = gameBridge.on('VISUAL_STAGE_CHANGED', (payload) => {
+      this.applyVisualStage(payload.stage);
+    });
 
     // 通知 React 层场景已就绪
     gameBridge.emit('GAME_READY', { mapId: V0_1_MAIN_MAP_IDENTITY.id });
   }
 
-  update(_time: number, _delta: number): void {
+  update(_time: number, delta: number): void {
     this.handlePlayerMovement();
     this.updateInteractions();
+    this.updateRestoration(delta);
   }
 
   shutdown(): void {
+    // 强制中断修复
+    if (this.restorationController) {
+      this.restorationController.forceInterrupt('场景销毁');
+    }
+
     // 取消 UI Store 订阅
     if (this.unsubInputMode) {
       this.unsubInputMode();
       this.unsubInputMode = null;
+    }
+    // 取消视觉阶段事件订阅
+    if (this.unsubVisualStage) {
+      this.unsubVisualStage();
+      this.unsubVisualStage = null;
     }
     // 注销键盘监听
     if (this.input.keyboard) {
@@ -221,6 +270,11 @@ export class UrbanWastelandScene extends Phaser.Scene {
       npc.gameObject.destroy();
     });
     this.npcEntities = [];
+    // 销毁植被图形
+    this.vegetationGraphics.forEach((g) => g.destroy());
+    this.vegetationGraphics = [];
+    // 恢复输入模式到安全状态
+    useUIStore.getState().setInputMode('gameplay');
     // 清理 GameBridge 中本场景相关事件
     gameBridge.emit('INTERACTION_UNAVAILABLE', { objectId: '' });
   }
@@ -263,16 +317,13 @@ export class UrbanWastelandScene extends Phaser.Scene {
       rect.setStrokeStyle(2, 0xffffff, 0.5);
       this.interactiveLayer.add(rect);
 
-      // 添加静态物理体 — NPC 不可被穿过
       this.physics.add.existing(rect, true);
       const body = rect.body as Phaser.Physics.Arcade.StaticBody;
       body.setSize(config.width, config.height);
       body.updateFromGameObject();
 
-      // 玩家与 NPC 碰撞
       this.physics.add.collider(this.player.gameObject, rect);
 
-      // NPC 名称标签
       const label = this.add.text(
         config.x,
         config.y - config.height / 2 - 10,
@@ -307,26 +358,35 @@ export class UrbanWastelandScene extends Phaser.Scene {
       S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
       D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
-    // E 键交互 — keydown 事件天然防止单帧重复触发
+    // E 键 — 使用 Phaser Key 对象检测持续按住状态
+    this.eKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+
+    // E 键 keydown — 用于检查类交互（非修复）
     this.input.keyboard.on('keydown-E', () => {
-      this.handleInteract();
+      this.handleEKeyDown();
     });
   }
 
   /**
    * 订阅 UI Store 的输入模式变化。
-   * React 通过 UI Store 切换输入模式，Scene 读取该状态决定是否暂停移动。
    */
   private setupInputModeSubscription(): void {
     this.unsubInputMode = useUIStore.subscribe((state) => {
+      // 如果从 restoration 切换到其他模式（非 gameplay），中断修复
+      if (
+        this.inputMode === 'restoration' &&
+        state.inputMode !== 'restoration' &&
+        state.inputMode !== 'gameplay'
+      ) {
+        this.restorationController?.interrupt('UI 打开');
+      }
       this.inputMode = state.inputMode;
     });
-    // 同步初始值
     this.inputMode = useUIStore.getState().inputMode;
   }
 
   private getMovementInput(): MovementInput {
-    // 输入锁定时，所有方向归零
+    // 输入锁定时（非 gameplay），所有方向归零
     if (this.inputMode !== 'gameplay') {
       return { up: false, down: false, left: false, right: false };
     }
@@ -349,6 +409,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // 检查交互对象
     let nearestAvailable: InteractionZone | null = null;
+    let pollutionZoneInRange = false;
     for (const zone of this.interactionZones) {
       const changed = zone.checkAvailability(playerX, playerY);
       if (changed) {
@@ -368,6 +429,15 @@ export class UrbanWastelandScene extends Phaser.Scene {
       if (zone.available && !nearestAvailable) {
         nearestAvailable = zone;
       }
+      // 追踪污染物堆是否在范围内
+      if (zone.available && zone.config.id === POLLUTION_ZONE_INTERACTION_ID) {
+        pollutionZoneInRange = true;
+      }
+    }
+
+    // 更新修复控制器的范围状态
+    if (this.restorationController) {
+      this.restorationController.setInRange(pollutionZoneInRange);
     }
 
     // 检查 NPC 交互范围
@@ -397,7 +467,22 @@ export class UrbanWastelandScene extends Phaser.Scene {
       }
     }
 
-    // 更新提示文本 — NPC 优先于交互对象
+    // 更新提示文本 — 修复中优先显示修复提示
+    if (this.restorationController) {
+      const restorationStatus = this.restorationController.getStatus();
+      if (restorationStatus === 'in_progress' || restorationStatus === 'interrupted') {
+        // 修复进行中或中断时，显示修复相关提示
+        const hint = this.restorationController.getInteractionHint();
+        this.interactionHintText.setText(hint);
+        this.interactionHintText.setVisible(true);
+        this.nearestInteractionId = POLLUTION_ZONE_INTERACTION_ID;
+        this.nearestIsNpc = false;
+        this.nearestNpcId = null;
+        return;
+      }
+    }
+
+    // NPC 优先于交互对象
     if (nearestNpc) {
       this.nearestInteractionId = nearestNpc.config.id;
       this.nearestIsNpc = true;
@@ -407,16 +492,18 @@ export class UrbanWastelandScene extends Phaser.Scene {
       );
       this.interactionHintText.setVisible(true);
     } else if (nearestAvailable) {
-      // 根据任务状态决定提示文本
-      const taskStatus = useTaskStore.getState().getTaskStatus(FIRST_TASK_ID);
-      let hint = '按 E 交互';
+      // 根据修复状态和任务状态决定提示文本
+      let hint: string;
       const display = nearestAvailable.config.displayName;
-      if (nearestAvailable.config.id === 'interaction.pollution_zone_01') {
-        if (taskStatus === 'active') {
-          hint = '按 E 清理';
-        } else if (taskStatus === 'objective_completed' || taskStatus === 'completed') {
+      if (nearestAvailable.config.id === POLLUTION_ZONE_INTERACTION_ID) {
+        // 使用修复控制器获取提示
+        if (this.restorationController) {
+          hint = this.restorationController.getInteractionHint();
+        } else {
           hint = '按 E 检查';
         }
+      } else {
+        hint = '按 E 交互';
       }
       this.nearestInteractionId = nearestAvailable.config.id;
       this.nearestIsNpc = false;
@@ -431,25 +518,95 @@ export class UrbanWastelandScene extends Phaser.Scene {
     }
   }
 
-  private handleInteract(): void {
-    // 对话或设置打开时，禁止交互
+  /**
+   * 每帧更新修复行为。
+   */
+  private updateRestoration(delta: number): void {
+    if (!this.restorationController) return;
+
+    // 更新 E 键持续状态
+    const eHeld = this.eKey?.isDown ?? false;
+    this.restorationController.setEKeyHeld(eHeld);
+
+    // 更新控制器（基于 delta 时间累积进度）
+    this.restorationController.update(delta);
+  }
+
+  /**
+   * E 键 keydown 处理 — 用于检查类交互。
+   * 修复行为通过持续按住触发，不在此处理。
+   */
+  private handleEKeyDown(): void {
+    // 修复中或非 gameplay 模式时，禁止检查交互
     if (this.inputMode !== 'gameplay') return;
 
+    // 如果最近的是污染物堆，根据修复状态决定行为
+    if (
+      this.nearestInteractionId === POLLUTION_ZONE_INTERACTION_ID &&
+      !this.nearestIsNpc
+    ) {
+      if (this.restorationController) {
+        const status = this.restorationController.getStatus();
+        const taskStatus = useTaskStore.getState().getTaskStatus(FIRST_TASK_ID);
+
+        if (status === 'completed') {
+          // 已完成 — 显示已完成提示
+          this.emitInteractionFeedback(
+            POLLUTION_ZONE_INTERACTION_ID,
+            '该区域已经完成临时清理，请返回林工处报告。',
+          );
+          return;
+        }
+
+        if (taskStatus !== 'active') {
+          // 未接取任务 — 基础检查反馈
+          this.emitInteractionFeedback(
+            POLLUTION_ZONE_INTERACTION_ID,
+            '已检查污染区域，需要先向林工了解修复任务。',
+          );
+          return;
+        }
+
+        // 任务 active 且未完成 — 修复由持续按住 E 驱动
+        // keydown 时不做即时完成
+        return;
+      }
+    }
+
+    // NPC 交互
     if (this.nearestIsNpc && this.nearestNpcId) {
       this.openNpcDialog(this.nearestNpcId);
       return;
     }
 
+    // 其他交互对象
     if (this.nearestInteractionId) {
       this.handleInteractionObject(this.nearestInteractionId);
     }
+  }
+
+  /**
+   * 发出交互反馈事件。
+   */
+  private emitInteractionFeedback(objectId: string, message: string): void {
+    const zone = this.interactionZones.find((z) => z.config.id === objectId);
+    if (!zone) return;
+
+    const currentTime = this.time.now;
+    if (!zone.tryTrigger(currentTime)) return;
+
+    gameBridge.emit('INTERACTION_TRIGGERED', {
+      objectId,
+      displayName: zone.config.displayName,
+      type: zone.config.type,
+      message,
+    });
   }
 
   private openNpcDialog(npcId: string): void {
     const npcDef = NPC_DEFINITIONS.find((n) => n.id === npcId);
     if (!npcDef) return;
 
-    // 通过 UI Store 打开对话（同时设置输入模式为 dialog）
     useUIStore.getState().setNpcDialogOpen(true, npcId);
 
     gameBridge.emit('NPC_DIALOG_OPEN', {
@@ -466,59 +623,114 @@ export class UrbanWastelandScene extends Phaser.Scene {
     const currentTime = this.time.now;
     if (!zone.tryTrigger(currentTime)) return;
 
-    const taskId = FIRST_TASK_ID;
-    const taskStatus = useTaskStore.getState().getTaskStatus(taskId);
+    // 其他交互对象 — 原有逻辑
+    gameBridge.emit('INTERACTION_TRIGGERED', {
+      objectId,
+      displayName: zone.config.displayName,
+      type: zone.config.type,
+      message: zone.config.feedbackMessage,
+    });
+  }
 
-    if (objectId === 'interaction.pollution_zone_01') {
-      if (taskStatus === 'active') {
-        // 完成任务目标
-        const success = useTaskStore.getState().completeObjective(
-          taskId,
-          objectId,
-        );
-        if (success) {
-          const def = findTaskById(taskId);
-          gameBridge.emit('TASK_OBJECTIVE_COMPLETED', {
-            taskId,
-            interactionId: objectId,
-          });
-          gameBridge.emit('INTERACTION_TRIGGERED', {
-            objectId,
-            displayName: zone.config.displayName,
-            type: zone.config.type,
-            message: '污染物堆已完成临时清理，请返回林工处报告。',
-          });
-          // 同时发出任务反馈
-          gameBridge.emit('TASK_FEEDBACK', {
-            message: '污染物堆已完成临时清理，请返回林工处报告。',
-          });
-          void def; // 保留引用以防未来需要
+  /**
+   * 根据环境 Store 状态恢复场景视觉阶段。
+   * 场景重新初始化时调用。
+   */
+  private restoreVisualStage(): void {
+    const envStore = useEnvironmentStore.getState();
+    const stage = envStore.visualStage;
+    this.applyVisualStage(stage);
+
+    // 如果修复已完成，更新污染物堆视觉和控制器状态
+    const target = findRestorationTargetByInteractionId(POLLUTION_ZONE_INTERACTION_ID);
+    if (target) {
+      const isCompleted = envStore.isEffectApplied(target.id);
+      if (isCompleted) {
+        const recoveringStage = target.visualStages.find((s) => s.stage === 'recovering');
+        if (recoveringStage) {
+          this.applyTargetVisual(recoveringStage);
         }
-      } else if (taskStatus === 'objective_completed' || taskStatus === 'completed') {
-        // 已完成 — 显示已完成提示
-        gameBridge.emit('INTERACTION_TRIGGERED', {
-          objectId,
-          displayName: zone.config.displayName,
-          type: zone.config.type,
-          message: '该污染物堆已经完成临时清理。',
-        });
-      } else {
-        // 未接取任务 — 基础检查反馈
-        gameBridge.emit('INTERACTION_TRIGGERED', {
-          objectId,
-          displayName: zone.config.displayName,
-          type: zone.config.type,
-          message: zone.config.feedbackMessage,
-        });
+        // 同步修复控制器状态为已完成
+        if (this.restorationController) {
+          this.restorationController.syncCompleted();
+        }
       }
-    } else {
-      // 其他交互对象 — 原有逻辑
-      gameBridge.emit('INTERACTION_TRIGGERED', {
-        objectId,
-        displayName: zone.config.displayName,
-        type: zone.config.type,
-        message: zone.config.feedbackMessage,
-      });
+    }
+  }
+
+  /**
+   * 应用场景视觉阶段变化。
+   */
+  private applyVisualStage(stage: RestorationVisualStage): void {
+    const target = findRestorationTargetByInteractionId(POLLUTION_ZONE_INTERACTION_ID);
+    if (!target) return;
+
+    const stageConfig = target.visualStages.find((s) => s.stage === stage);
+    if (!stageConfig) return;
+
+    // 更新背景色调
+    this.backgroundRect.setFillStyle(stageConfig.backgroundTint);
+
+    // 更新污染物堆视觉
+    this.applyTargetVisual(stageConfig);
+
+    // recovering 阶段添加占位植被
+    if (stage === 'recovering') {
+      this.addPlaceholderVegetation();
+    }
+  }
+
+  /**
+   * 应用污染物堆视觉变化。
+   */
+  private applyTargetVisual(
+    stageConfig: { targetColor: number; targetAlpha: number; targetScale: number },
+  ): void {
+    const zone = this.interactionZones.find(
+      (z) => z.config.id === POLLUTION_ZONE_INTERACTION_ID,
+    );
+    if (!zone) return;
+
+    zone.updateVisual({
+      color: stageConfig.targetColor,
+      alpha: stageConfig.targetAlpha,
+      scale: stageConfig.targetScale,
+    });
+
+    // 更新标签
+    if (stageConfig.targetAlpha < 0.6) {
+      zone.setLabelText('已清理');
+    }
+  }
+
+  /**
+   * 添加占位植被图形。
+   */
+  private addPlaceholderVegetation(): void {
+    if (this.vegetationGraphics.length > 0) return;
+
+    // 在污染物堆附近添加少量占位植被
+    const target = POLLUTION_ZONE_01_TARGET;
+    const interactionObj = INTERACTION_OBJECTS.find(
+      (o) => o.id === POLLUTION_ZONE_INTERACTION_ID,
+    );
+    if (!interactionObj) return;
+
+    const baseX = interactionObj.x;
+    const baseY = interactionObj.y;
+    void target;
+
+    // 添加 3 个小绿色矩形作为占位植被
+    const positions = [
+      { x: baseX - 40, y: baseY + 20 },
+      { x: baseX + 35, y: baseY + 15 },
+      { x: baseX - 10, y: baseY + 40 },
+    ];
+
+    for (const pos of positions) {
+      const veg = this.add.rectangle(pos.x, pos.y, 12, 16, 0x7ed957, 0.8);
+      this.interactiveLayer.add(veg);
+      this.vegetationGraphics.push(veg);
     }
   }
 }

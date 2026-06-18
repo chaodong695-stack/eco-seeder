@@ -10,6 +10,14 @@ import type {
   InteractionTriggeredPayload,
   InteractionUnavailablePayload,
 } from '@/game/interaction/interactionTypes';
+import type {
+  RestorationStartedPayload,
+  RestorationProgressPayload,
+  RestorationInterruptedPayload,
+  RestorationCompletedPayload,
+  EnvironmentUpdatedPayload,
+  VisualStageChangedPayload,
+} from '@/game/restoration/restorationTypes';
 
 // ─── DEV-03 新增事件 payload ─────────────────────────────
 
@@ -65,6 +73,13 @@ export type GameBridgeEventMap = {
   TASK_OBJECTIVE_COMPLETED: TaskObjectiveCompletedPayload;
   TASK_COMPLETED: TaskCompletedPayload;
   TASK_FEEDBACK: TaskFeedbackPayload;
+  // DEV-04 新增事件
+  RESTORATION_STARTED: RestorationStartedPayload;
+  RESTORATION_PROGRESS: RestorationProgressPayload;
+  RESTORATION_INTERRUPTED: RestorationInterruptedPayload;
+  RESTORATION_COMPLETED: RestorationCompletedPayload;
+  ENVIRONMENT_UPDATED: EnvironmentUpdatedPayload;
+  VISUAL_STAGE_CHANGED: VisualStageChangedPayload;
 };
 
 type EventHandler<T = unknown> = (payload: T) => void;
