@@ -3,6 +3,10 @@
  *
  * 显示当日 3 个每日任务的标题、来源 NPC、进度、状态、天气限制和完成状态。
  * 数据来源于 dailyTaskStore（唯一事实来源）。
+ *
+ * DEV-06 第三轮修复：
+ * - 支持紧凑摘要模式（用于折叠 HUD 标题栏）；
+ * - 详情模式增加完成方式提示。
  */
 
 import { useMemo } from 'react';
@@ -22,13 +26,19 @@ const STATUS_TEXT: Record<DailyTaskStatus, string> = {
   completed: '已完成',
 };
 
+/** 完成方式提示文本。 */
+const COMPLETION_HINTS: Record<string, string> = {
+  collect_waste: '靠近污染物堆，按住 E 清理',
+  restore_area: '靠近受损环境点，按 E 修复',
+  inspect_drainage: '靠近排水设施，按 E 检查（需雨天）',
+  collect_storm_waste: '靠近暴雨冲散垃圾，按 E 清理（需暴雨）',
+  ecology_patrol: '靠近生态巡查点，按 E 记录',
+  fog_hazard_marking: '靠近雾天危险点，按 E 标记（需雾天）',
+};
+
 export function DailyTaskPanel() {
   const tasks = useDailyTaskStore((s) => s.tasks);
-  const devWeatherPreview = useWorldStore((s) => s.devWeatherPreview);
-  const weatherSnapshot = useWorldStore((s) => s.weatherSnapshot);
-  const getDisplayWeather = useWorldStore((s) => s.getDisplayWeather);
-
-  const currentWeather = getDisplayWeather();
+  const currentWeather = useWorldStore.getState().getDisplayWeather();
 
   const taskItems = useMemo(() => {
     return tasks.map((inst) => {
@@ -59,12 +69,10 @@ export function DailyTaskPanel() {
         waitingText,
         rewardClaimed: inst.rewardClaimed,
         rewardValue: def.reward?.restorationValue,
+        objectiveType: def.objectiveType,
       };
     }).filter((t): t is NonNullable<typeof t> => t !== null);
   }, [tasks, currentWeather]);
-
-  void devWeatherPreview;
-  void weatherSnapshot;
 
   return (
     <div className={styles.panel}>
@@ -110,6 +118,11 @@ export function DailyTaskPanel() {
                     奖励：恢复值 +{task.rewardValue}
                   </span>
                 )}
+                {COMPLETION_HINTS[task.objectiveType] && (
+                  <span className={styles.metaItem}>
+                    完成方式：{COMPLETION_HINTS[task.objectiveType]}
+                  </span>
+                )}
               </div>
               {task.status === 'waiting_condition' && (
                 <div className={styles.waitingNotice}>
@@ -126,3 +139,25 @@ export function DailyTaskPanel() {
     </div>
   );
 }
+
+/**
+ * 每日任务紧凑摘要 — 用于折叠 HUD 标题栏。
+ */
+export function DailyTaskSummary() {
+  const tasks = useDailyTaskStore((s) => s.tasks);
+
+  const activeCount = tasks.filter(
+    (t) => t.status === 'active' || t.status === 'waiting_condition',
+  ).length;
+  const completedCount = tasks.filter((t) => t.status === 'completed').length;
+  const totalProgress = tasks.reduce((sum, t) => sum + t.progress, 0);
+  const totalTarget = tasks.reduce((sum, t) => sum + t.targetValue, 0);
+
+  return (
+    <>
+      {activeCount + completedCount}/{tasks.length} · 进度 {totalProgress}/{totalTarget}
+    </>
+  );
+}
+
+export { COMPLETION_HINTS };

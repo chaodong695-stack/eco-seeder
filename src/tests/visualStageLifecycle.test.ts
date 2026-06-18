@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { gameBridge } from '@/game/bridge/GameBridge';
 import { useUIStore } from '@/store/uiStore';
-import { useTaskStore } from '@/store/taskStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
@@ -241,7 +240,6 @@ function emitVisualStageChanged(): void {
 describe('Scene lifecycle — VISUAL_STAGE_CHANGED handler management', () => {
   beforeEach(() => {
     gameBridge.clear();
-    useTaskStore.getState().resetTasks();
     useUIStore.getState().returnToStart();
     useEnvironmentStore.getState().resetEnvironment();
   });
@@ -428,7 +426,6 @@ describe('RestorationController — task mode blocking', () => {
   beforeEach(() => {
     localStorage.clear();
     useDailyTaskStore.getState().resetDailyTasks();
-    useTaskStore.getState().resetTasks();
     useUIStore.getState().returnToStart();
     useEnvironmentStore.getState().resetEnvironment();
     gameBridge.clear();

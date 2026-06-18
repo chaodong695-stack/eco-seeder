@@ -11,10 +11,10 @@
 import { create } from 'zustand';
 import type { DailyTaskInstance, DailyTaskStatus, TaskProgressSignal } from '@/domain/tasks/dailyTaskTypes';
 import {
-  DAILY_TASK_DEFINITIONS,
   DAILY_TASK_POOL_VERSION,
   DAILY_TASKS_PER_DAY,
   findDailyTaskById,
+  getCompletableTaskDefinitions,
 } from '@/domain/tasks/dailyTaskDefinitions';
 import { generateDailyTasks } from '@/domain/tasks/dailyTaskGenerator';
 import {
@@ -166,7 +166,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
             dailyTaskPoolVersion: DAILY_TASK_POOL_VERSION,
             availableWeatherTypes,
           },
-          DAILY_TASK_DEFINITIONS,
+          getCompletableTaskDefinitions(),
         );
 
         set({
@@ -201,7 +201,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
         dailyTaskPoolVersion: DAILY_TASK_POOL_VERSION,
         availableWeatherTypes,
       },
-      DAILY_TASK_DEFINITIONS,
+      getCompletableTaskDefinitions(),
     );
 
     set({

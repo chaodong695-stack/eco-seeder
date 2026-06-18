@@ -866,13 +866,14 @@ anonymousPlayerId:localDate:mapId:dailyTaskPoolVersion
 
 三层天气门控：
 
-1. **场景层（VisualController）**：非 `heavy_rain` 时隐藏暴雨垃圾对象（`setVisible(false)` / `setActive(false)`）；
-2. **交互层（InteractionZone）**：非 `heavy_rain` 时禁用暴雨垃圾交互区域和交互提示；非 `light_rain`/`heavy_rain` 时不显示排水设施交互提示；
+1. **场景层（VisualController）**：非 `heavy_rain` 时隐藏暴雨垃圾对象；非 `fog` 时隐藏雾天危险点；
+2. **交互层（InteractionZone）**：非 `heavy_rain` 时禁用暴雨垃圾交互；非 `light_rain`/`heavy_rain` 时不显示排水设施交互提示；非 `fog` 时不显示雾天危险点交互提示；
 3. **Store 层（dailyTaskStore.applyProgress）**：处理 `PROGRESS_SIGNAL` 时再次校验当前天气，天气条件不满足时不计进度。
 
 正确规则：
 - 暴雨垃圾仅在 `heavy_rain` 下可见和可交互；
 - 排水设施仅在 `light_rain` 或 `heavy_rain` 下可计入任务进度；
+- 雾天危险点仅在 `fog` 下可见和可交互；
 - 条件不满足时不得显示可交互提示，不得增加进度；
 - 天气回来切换不得重复创建对象或重复累计 sourceId。
 
@@ -943,15 +944,66 @@ NPC 指示符：
 
 ### 15.8 UI 布局
 
-右侧栏统一纵向排列：
+右侧采用可折叠 HUD 抽屉（`CollapsibleRightHud`），替代原来双面板常驻布局：
+
 ```text
-区域状态面板（EnvironmentStatusPanel）
-每日任务面板（DailyTaskPanel）
+右上角常驻紧凑状态栏
+
+[区域状态  修复中 ▼]
+[每日任务  0/3 ▼]
 ```
 
-- 使用 `RightSidebar` 容器统一管理右侧面板布局；
-- 各面板设置 `max-height` 和内部滚动，不互相遮挡；
-- 不得仅通过修改 `z-index` 隐藏其中一个面板。
+点击后展开对应内容：
+
+```text
+区域状态 ▼
+├─ 污染程度
+├─ 植被状况
+├─ 水质状态
+└─ 修复进度
+
+每日任务 ▼
+├─ 任务一
+├─ 任务二
+└─ 任务三
+```
+
+交互要求：
+1. 默认仅显示紧凑标题和关键摘要；
+2. 点击标题展开或收起；
+3. 只允许一个面板同时展开；
+4. 展开高度不得超过可视区域；
+5. 内容过多时仅面板内部滚动；
+6. 不得遮挡底部主要按钮；
+7. 小尺寸窗口下默认折叠；
+8. 面板展开时不能阻断键盘移动。
+
+### 15.9 任务入口统一
+
+三处任务 UI 职责清晰：
+
+- **右侧每日任务**（`DailyTaskPanel`）：紧凑进度摘要，折叠后仅显示计数；
+- **底部任务按钮**（`TaskPanel`）：完整任务详情，显示标题、描述、进度、目标值、来源 NPC、天气条件、当前状态、完成方式提示；
+- **NPC 对话**（`NpcDialog`）：接取 NPC 所属任务。
+
+三处必须读取同一个 `dailyTaskStore`，不得各自维护任务副本。
+
+进行中任务 = `status === "active" || status === "waiting_condition"`
+
+### 15.10 任务目标映射
+
+每个进入正式生成池的每日任务都必须有对应的场景交互对象：
+
+| 任务 ID                    | objectiveType       | 场景对象         | 天气条件  | 目标值 |
+| ------------------------ | ------------------- | ------------ | ----- | --- |
+| daily_collect_waste      | collect_waste       | 污染物堆        | 无     | 1   |
+| daily_restore_area       | restore_area        | 受损环境点       | 无     | 2   |
+| daily_drainage_check     | inspect_drainage    | 排水设施        | 小雨、暴雨 | 1   |
+| daily_storm_waste        | collect_storm_waste | 暴雨冲散垃圾     | 暴雨    | 1   |
+| daily_ecology_patrol     | ecology_patrol      | 生态巡查点       | 晴朗、阴天 | 3   |
+| daily_fog_hazard_marking | fog_hazard_marking  | 雾天危险点       | 雾     | 2   |
+
+映射表定义在 `TASK_OBJECTIVE_SOURCE_MAP`，所有任务定义通过 `getCompletableTaskDefinitions()` 过滤后才能进入任务生成池。
 
 ---
 

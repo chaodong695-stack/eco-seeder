@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { GameInstance } from '@/game/bootstrap/GameInstance';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
-import { useTaskStore } from '@/store/taskStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GameHud } from '@/ui/components/GameHud';
@@ -10,11 +9,11 @@ import { InteractionPrompt } from '@/ui/components/InteractionPrompt';
 import { TaskPanel } from '@/ui/components/TaskPanel';
 import { NpcDialog } from '@/ui/components/NpcDialog';
 import { SettingsPanel } from '@/ui/components/SettingsPanel';
-import { EnvironmentStatusPanel } from '@/ui/components/EnvironmentStatusPanel';
+import { EnvironmentStatusPanel, EnvironmentStatusSummary } from '@/ui/components/EnvironmentStatusPanel';
 import { RestorationProgress } from '@/ui/components/RestorationProgress';
 import { WorldStatus } from '@/ui/components/WorldStatus';
-import { DailyTaskPanel } from '@/ui/components/DailyTaskPanel';
-import { RightSidebar } from '@/ui/components/RightSidebar';
+import { DailyTaskPanel, DailyTaskSummary } from '@/ui/components/DailyTaskPanel';
+import { CollapsibleRightHud } from '@/ui/components/CollapsibleRightHud';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -61,7 +60,6 @@ export function GamePage() {
       gameInstanceRef.current = null;
     }
     setIsReady(false);
-    useTaskStore.getState().resetTasks();
     useEnvironmentStore.getState().resetEnvironment();
     useSettingsStore.getState().resetSettings();
     // 每日任务不重置 — 返回开始页后不清空当日任务
@@ -93,10 +91,12 @@ export function GamePage() {
       {isReady && <GameHud onReturnToStart={handleReturnToStart} />}
       {isReady && <WorldStatus />}
       {isReady && (
-        <RightSidebar>
-          <EnvironmentStatusPanel />
-          <DailyTaskPanel />
-        </RightSidebar>
+        <CollapsibleRightHud
+          environmentSummary={<EnvironmentStatusSummary />}
+          environmentDetail={<EnvironmentStatusPanel />}
+          dailyTasksSummary={<DailyTaskSummary />}
+          dailyTasksDetail={<DailyTaskPanel />}
+        />
       )}
       {isReady && <InteractionPrompt />}
       {isReady && <RestorationProgress />}

@@ -61,6 +61,9 @@
   background: var(--color-panel-light);
   border-radius: var(--radius-sm);
   margin-bottom: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .taskHeader {
@@ -93,54 +96,36 @@
   background: rgba(126, 217, 87, 0.15);
 }
 
+.statusWaiting {
+  color: var(--color-warning);
+  background: rgba(245, 185, 66, 0.15);
+}
+
 .taskDesc {
   font-size: 12px;
   color: var(--color-text-secondary);
   margin-top: var(--spacing-xs);
+  line-height: 1.4;
 }
 
-.taskObjective {
-  font-size: 12px;
-  color: var(--color-text-primary);
-  margin-top: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: rgba(39, 215, 196, 0.08);
-  border-radius: var(--radius-sm);
-}
-
-.objectiveLabel {
-  color: var(--color-primary);
-  font-weight: 500;
-}
-
-.taskReward {
+.taskMeta {
   display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-sm);
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--spacing-xs);
 }
 
-.rewardLabel {
-  font-size: 12px;
-  color: var(--color-reward);
-  font-weight: 500;
-}
-
-.rewardItem {
+.metaItem {
   font-size: 12px;
   color: var(--color-text-secondary);
-  padding: 2px 6px;
-  background: rgba(245, 185, 66, 0.1);
-  border-radius: var(--radius-sm);
 }
 
-.rewardClaimed {
+.completedNotice {
   font-size: 11px;
   color: var(--color-eco-green);
-  padding: 2px 6px;
-  background: rgba(126, 217, 87, 0.15);
-  border-radius: var(--radius-sm);
+  font-weight: 600;
+  padding: 2px 0;
+  margin-top: var(--spacing-xs);
 }
 
 .emptyText {

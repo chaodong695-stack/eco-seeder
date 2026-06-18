@@ -134,6 +134,19 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private readonly weatherGatedObjectIds = new Set([
     'interaction.storm_debris_01',
     'interaction.drainage_facility_01',
+    'interaction.fog_hazard_01',
+    'interaction.fog_hazard_02',
+  ]);
+  /** 受损环境点交互对象 ID。 */
+  private readonly damagedEnvObjectIds = new Set([
+    'interaction.damaged_env_01',
+    'interaction.damaged_env_02',
+  ]);
+  /** 生态巡查点交互对象 ID。 */
+  private readonly ecologyPatrolObjectIds = new Set([
+    'interaction.ecology_patrol_01',
+    'interaction.ecology_patrol_02',
+    'interaction.ecology_patrol_03',
   ]);
 
   constructor() {
@@ -580,6 +593,12 @@ export class UrbanWastelandScene extends Phaser.Scene {
           continue;
         }
       }
+      // 天气门控 — 雾天危险点在非雾天不显示交互提示
+      if (zone.available && (zone.config.id === 'interaction.fog_hazard_01' || zone.config.id === 'interaction.fog_hazard_02')) {
+        if (currentWeather !== 'fog') {
+          continue;
+        }
+      }
       if (zone.available && !nearestAvailable) {
         nearestAvailable = zone;
       }
@@ -783,6 +802,18 @@ export class UrbanWastelandScene extends Phaser.Scene {
       }
     }
 
+    // 受损环境点交互
+    if (this.nearestInteractionId && !this.nearestIsNpc && this.damagedEnvObjectIds.has(this.nearestInteractionId)) {
+      this.handleRestoreAreaInteraction(this.nearestInteractionId);
+      return;
+    }
+
+    // 生态巡查点交互
+    if (this.nearestInteractionId && !this.nearestIsNpc && this.ecologyPatrolObjectIds.has(this.nearestInteractionId)) {
+      this.handleEcologyPatrolInteraction(this.nearestInteractionId);
+      return;
+    }
+
     // 其他交互对象
     if (this.nearestInteractionId) {
       this.handleInteractionObject(this.nearestInteractionId);
@@ -808,7 +839,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
   }
 
   /**
-   * 处理天气任务交互对象（排水设施、暴雨垃圾）。
+   * 处理天气任务交互对象（排水设施、暴雨垃圾、雾天危险点）。
    *
    * 只在天气条件满足且任务处于 active 状态时计入进度。
    * 返回 true 表示已处理，false 表示不是天气任务交互。
@@ -870,7 +901,89 @@ export class UrbanWastelandScene extends Phaser.Scene {
       return true;
     }
 
+    // 雾天危险点
+    if (objectId === 'interaction.fog_hazard_01' || objectId === 'interaction.fog_hazard_02') {
+      const def = findDailyTaskById('daily_fog_hazard_marking');
+      if (!def) return false;
+
+      const tasks = useDailyTaskStore.getState().tasks;
+      const inst = tasks.find((t) => t.taskId === 'daily_fog_hazard_marking');
+      if (!inst || inst.status !== 'active') {
+        this.emitInteractionFeedback(objectId, '请先向巡查员接取雾天危险标记任务。');
+        return true;
+      }
+
+      const currentWeather = useWorldStore.getState().getDisplayWeather();
+      if (!isWeatherConditionMet(def, currentWeather)) {
+        this.emitInteractionFeedback(objectId, '当前天气不适合标记危险点。');
+        return true;
+      }
+
+      // 计入进度
+      gameBridge.emit('DAILY_TASK_PROGRESS_SIGNAL', {
+        objectiveType: def.objectiveType,
+        amount: 1,
+        sourceId: objectId,
+      });
+      this.emitInteractionFeedback(objectId, '已标记一处雾天危险点。');
+      return true;
+    }
+
     return false;
+  }
+
+  /**
+   * 处理受损环境点交互。
+   *
+   * 只有任务已接取时才能增加进度。
+   * 同一环境点只能计入一次（通过 sourceId 防重复）。
+   */
+  private handleRestoreAreaInteraction(objectId: string): boolean {
+    const def = findDailyTaskById('daily_restore_area');
+    if (!def) return false;
+
+    const tasks = useDailyTaskStore.getState().tasks;
+    const inst = tasks.find((t) => t.taskId === 'daily_restore_area');
+    if (!inst || inst.status !== 'active') {
+      this.emitInteractionFeedback(objectId, '请先向林工接取修复受损环境点任务。');
+      return true;
+    }
+
+    // 计入进度
+    gameBridge.emit('DAILY_TASK_PROGRESS_SIGNAL', {
+      objectiveType: def.objectiveType,
+      amount: 1,
+      sourceId: objectId,
+    });
+    this.emitInteractionFeedback(objectId, '已修复一处受损环境点。');
+    return true;
+  }
+
+  /**
+   * 处理生态巡查点交互。
+   *
+   * 只有任务已接取时才能增加进度。
+   * 同一巡查点只能计入一次。
+   */
+  private handleEcologyPatrolInteraction(objectId: string): boolean {
+    const def = findDailyTaskById('daily_ecology_patrol');
+    if (!def) return false;
+
+    const tasks = useDailyTaskStore.getState().tasks;
+    const inst = tasks.find((t) => t.taskId === 'daily_ecology_patrol');
+    if (!inst || inst.status !== 'active') {
+      this.emitInteractionFeedback(objectId, '请先向巡查员接取生态巡查任务。');
+      return true;
+    }
+
+    // 计入进度
+    gameBridge.emit('DAILY_TASK_PROGRESS_SIGNAL', {
+      objectiveType: def.objectiveType,
+      amount: 1,
+      sourceId: objectId,
+    });
+    this.emitInteractionFeedback(objectId, '已记录一处生态巡查点。');
+    return true;
   }
 
   private openNpcDialog(npcId: string): void {
@@ -1126,7 +1239,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * 三层天气门控的第 1、2 层：
    * 1. 非 heavy_rain 时隐藏暴雨垃圾对象；
    * 2. 非 heavy_rain 时禁用其交互区域和交互提示；
-   *    非light_rain/heavy_rain时隐藏排水设施交互。
+   *    非 light_rain/heavy_rain 时隐藏排水设施交互；
+   *    非 fog 时隐藏雾天危险点。
    *
    * 第 3 层（Store 校验）在 dailyTaskStore.applyProgress 中完成。
    */
@@ -1150,6 +1264,19 @@ export class UrbanWastelandScene extends Phaser.Scene {
           zone.forceUnavailable();
         }
         // visible 时不需要额外操作 — checkAvailability 会自动恢复
+      }
+
+      // 雾天危险点仅在 fog 下可见和可交互
+      if (config.id === 'interaction.fog_hazard_01' || config.id === 'interaction.fog_hazard_02') {
+        const visible = weather === 'fog';
+        const gameObject = zone.getGameObject();
+        if (gameObject && gameObject.scene) {
+          gameObject.setVisible(visible);
+          gameObject.setActive(visible);
+        }
+        if (!visible) {
+          zone.forceUnavailable();
+        }
       }
 
       // 排水设施在 light_rain 或 heavy_rain 下可交互

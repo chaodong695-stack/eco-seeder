@@ -19,7 +19,7 @@ export const DAILY_TASK_DEFINITIONS: DailyTaskDefinition[] = [
     description: '在场景中找到并清理散落的垃圾堆。',
     npcId: 'npc.engineer.lin',
     objectiveType: 'collect_waste',
-    targetValue: 3,
+    targetValue: 1,
     weight: 10,
     reward: { restorationValue: 5 },
   },
@@ -40,8 +40,8 @@ export const DAILY_TASK_DEFINITIONS: DailyTaskDefinition[] = [
     title: '检查排水设施',
     description: '检查排水设施，确保暴雨时排水通畅。',
     npcId: 'npc_weather_ranger',
-    objectiveType: 'drainage_check',
-    targetValue: 2,
+    objectiveType: 'inspect_drainage',
+    targetValue: 1,
     condition: { supportedWeather: ['light_rain', 'heavy_rain'] },
     weight: 8,
     reward: { restorationValue: 6 },
@@ -52,8 +52,8 @@ export const DAILY_TASK_DEFINITIONS: DailyTaskDefinition[] = [
     title: '清理暴雨冲散垃圾',
     description: '暴雨冲散了大量垃圾，请尽快清理。',
     npcId: 'npc_weather_ranger',
-    objectiveType: 'storm_waste',
-    targetValue: 3,
+    objectiveType: 'collect_storm_waste',
+    targetValue: 1,
     condition: { supportedWeather: ['heavy_rain'] },
     weight: 6,
     reward: { restorationValue: 10 },
@@ -105,4 +105,49 @@ export function findDailyTaskById(id: string): DailyTaskDefinition | undefined {
  */
 export function getDailyTasksByNpcId(npcId: string): DailyTaskDefinition[] {
   return DAILY_TASK_DEFINITIONS.filter((t) => t.npcId === npcId);
+}
+
+/**
+ * 任务目标类型 → 场景交互对象 ID 列表的映射。
+ *
+ * 每个进入正式生成池的每日任务都必须在此映射中注册其对应的场景交互对象。
+ * 如果某任务没有交互对象，则不应进入正式任务生成池。
+ */
+export const TASK_OBJECTIVE_SOURCE_MAP: Record<string, string[]> = {
+  collect_waste: ['interaction.pollution_zone_01'],
+  restore_area: ['interaction.damaged_env_01', 'interaction.damaged_env_02'],
+  inspect_drainage: ['interaction.drainage_facility_01'],
+  collect_storm_waste: ['interaction.storm_debris_01'],
+  ecology_patrol: [
+    'interaction.ecology_patrol_01',
+    'interaction.ecology_patrol_02',
+    'interaction.ecology_patrol_03',
+  ],
+  fog_hazard_marking: ['interaction.fog_hazard_01', 'interaction.fog_hazard_02'],
+};
+
+/**
+ * 检查任务定义是否有对应的场景交互对象。
+ */
+export function hasObjectiveSource(def: import('./dailyTaskTypes').DailyTaskDefinition): boolean {
+  return (
+    TASK_OBJECTIVE_SOURCE_MAP[def.objectiveType] !== undefined &&
+    TASK_OBJECTIVE_SOURCE_MAP[def.objectiveType].length > 0
+  );
+}
+
+/**
+ * 获取任务定义对应的场景交互对象 ID 列表。
+ */
+export function getObjectiveSources(def: import('./dailyTaskTypes').DailyTaskDefinition): string[] {
+  return TASK_OBJECTIVE_SOURCE_MAP[def.objectiveType] ?? [];
+}
+
+/**
+ * 获取所有可完成的任务定义（有场景交互对象的）。
+ *
+ * 不可完成的任务不会进入正式任务生成池。
+ */
+export function getCompletableTaskDefinitions(): import('./dailyTaskTypes').DailyTaskDefinition[] {
+  return DAILY_TASK_DEFINITIONS.filter(hasObjectiveSource);
 }
