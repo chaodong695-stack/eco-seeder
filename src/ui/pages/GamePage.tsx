@@ -15,6 +15,7 @@ import { EnvironmentStatusPanel } from '@/ui/components/EnvironmentStatusPanel';
 import { RestorationProgress } from '@/ui/components/RestorationProgress';
 import { WorldStatus } from '@/ui/components/WorldStatus';
 import { DailyTaskPanel } from '@/ui/components/DailyTaskPanel';
+import { RightSidebar } from '@/ui/components/RightSidebar';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -95,9 +96,13 @@ export function GamePage() {
 
       {isReady && <GameHud onReturnToStart={handleReturnToStart} />}
       {isReady && <WorldStatus />}
-      {isReady && <DailyTaskPanel />}
+      {isReady && (
+        <RightSidebar>
+          <EnvironmentStatusPanel />
+          <DailyTaskPanel />
+        </RightSidebar>
+      )}
       {isReady && <InteractionPrompt />}
-      {isReady && <EnvironmentStatusPanel />}
       {isReady && <RestorationProgress />}
       {isReady && isTaskPanelOpen && <TaskPanel />}
       {isReady && isNpcDialogOpen && <NpcDialog />}

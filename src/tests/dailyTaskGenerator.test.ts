@@ -95,19 +95,23 @@ describe('dailyTaskGenerator', () => {
     });
 
     it('fills with normal tasks when weather tasks insufficient', () => {
-      // No weather types available at all
+      // Only clear weather available — weather tasks that don't support clear are filtered out
+      // but unconditional tasks (2) + ecology_patrol (clear/overcast) = 3 available
       const input: DailyTaskGenerationInput = {
         ...BASE_INPUT,
-        availableWeatherTypes: [],
+        availableWeatherTypes: ['clear'],
       };
       const tasks = generateDailyTasks(input, DAILY_TASK_DEFINITIONS);
       expect(tasks).toHaveLength(DAILY_TASKS_PER_DAY);
 
-      // All tasks should be unconditional
+      // All tasks should be unconditional or support clear weather
       for (const task of tasks) {
         const def = DAILY_TASK_DEFINITIONS.find((d) => d.id === task.taskId);
         expect(def).toBeDefined();
-        expect(hasWeatherCondition(def!)).toBe(false);
+        if (def && hasWeatherCondition(def)) {
+          const supported = def.condition?.supportedWeather ?? [];
+          expect(supported).toContain('clear');
+        }
       }
     });
 

@@ -89,28 +89,30 @@ describe('dailyTaskStore', () => {
   describe('acceptTask', () => {
     it('accepts an available task', () => {
       useDailyTaskStore.getState().init();
-      const taskId = useDailyTaskStore.getState().tasks[0].taskId;
-      const result = useDailyTaskStore.getState().acceptTask(taskId);
+      const instanceId = useDailyTaskStore.getState().tasks[0].instanceId;
+      const result = useDailyTaskStore.getState().acceptTask(instanceId);
       expect(result).toBe(true);
-      const task = useDailyTaskStore.getState().tasks.find((t) => t.taskId === taskId);
+      const task = useDailyTaskStore.getState().tasks.find((t) => t.instanceId === instanceId);
       expect(task?.status).not.toBe('available');
     });
 
     it('fails to accept already accepted task', () => {
       useDailyTaskStore.getState().init();
-      const taskId = useDailyTaskStore.getState().tasks[0].taskId;
-      useDailyTaskStore.getState().acceptTask(taskId);
-      const result = useDailyTaskStore.getState().acceptTask(taskId);
+      const instanceId = useDailyTaskStore.getState().tasks[0].instanceId;
+      useDailyTaskStore.getState().acceptTask(instanceId);
+      const result = useDailyTaskStore.getState().acceptTask(instanceId);
       expect(result).toBe(false);
     });
 
     it('emits DAILY_TASK_STATUS_CHANGED on accept', () => {
       useDailyTaskStore.getState().init();
+      const instanceId = useDailyTaskStore.getState().tasks[0].instanceId;
       const taskId = useDailyTaskStore.getState().tasks[0].taskId;
-      useDailyTaskStore.getState().acceptTask(taskId);
+      useDailyTaskStore.getState().acceptTask(instanceId);
       expect(gameBridge.emit).toHaveBeenCalledWith(
         'DAILY_TASK_STATUS_CHANGED',
         expect.objectContaining({
+          instanceId,
           taskId,
           previousStatus: 'available',
         }),
@@ -143,7 +145,7 @@ describe('dailyTaskStore', () => {
       expect(unconditionalTask).toBeDefined();
       if (!unconditionalTask) return;
 
-      useDailyTaskStore.getState().acceptTask(unconditionalTask.taskId);
+      useDailyTaskStore.getState().acceptTask(unconditionalTask.instanceId);
 
       const def = findDailyTaskById(unconditionalTask.taskId)!;
       expect(def).toBeDefined();
@@ -175,7 +177,7 @@ describe('dailyTaskStore', () => {
       expect(task).toBeDefined();
       if (!task) return;
 
-      useDailyTaskStore.getState().acceptTask(task.taskId);
+      useDailyTaskStore.getState().acceptTask(task.instanceId);
 
       const def = findDailyTaskById(task.taskId)!;
 
@@ -204,7 +206,7 @@ describe('dailyTaskStore', () => {
       });
       if (!task) return;
 
-      useDailyTaskStore.getState().acceptTask(task.taskId);
+      useDailyTaskStore.getState().acceptTask(task.instanceId);
 
       const def = findDailyTaskById(task.taskId)!;
 
@@ -233,7 +235,7 @@ describe('dailyTaskStore', () => {
       });
       if (!task) return;
 
-      useDailyTaskStore.getState().acceptTask(task.taskId);
+      useDailyTaskStore.getState().acceptTask(task.instanceId);
 
       const def = findDailyTaskById(task.taskId)!;
 
@@ -266,7 +268,7 @@ describe('dailyTaskStore', () => {
       });
       if (!task) return;
 
-      useDailyTaskStore.getState().acceptTask(task.taskId);
+      useDailyTaskStore.getState().acceptTask(task.instanceId);
 
       const def = findDailyTaskById(task.taskId)!;
 

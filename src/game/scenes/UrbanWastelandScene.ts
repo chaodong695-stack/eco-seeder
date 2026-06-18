@@ -146,6 +146,11 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private unsubDailyTaskProgress: (() => void) | null = null;
   /** 每日任务 Store 订阅取消函数。 */
   private unsubDailyTaskStore: (() => void) | null = null;
+  /** 天气条件交互对象的 ID 集合。 */
+  private readonly weatherGatedObjectIds = new Set([
+    'interaction.storm_debris_01',
+    'interaction.drainage_facility_01',
+  ]);
 
   constructor() {
     super({ key: SCENE_KEY });
@@ -470,7 +475,16 @@ export class UrbanWastelandScene extends Phaser.Scene {
       body.setSize(config.width, config.height);
       body.updateFromGameObject();
 
-      this.physics.add.collider(this.player.gameObject, rect);
+      // NPC 碰撞策略：
+      // - 林工保留实体碰撞（不位于主要通行路线）
+      // - 巡查员使用非阻挡型触发器（避免阻挡通路）
+      if (config.id === 'npc_weather_ranger') {
+        // 巡查员 — 使用 overlap 代替 collider，玩家可以穿过
+        this.physics.add.overlap(this.player.gameObject, rect);
+      } else {
+        // 林工 — 保留碰撞
+        this.physics.add.collider(this.player.gameObject, rect);
+      }
 
       const label = this.add.text(
         config.x,
@@ -554,6 +568,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private updateInteractions(): void {
     const playerX = this.player.gameObject.x;
     const playerY = this.player.gameObject.y;
+    const currentWeather = useWorldStore.getState().getDisplayWeather();
 
     // 检查交互对象
     let nearestAvailable: InteractionZone | null = null;
@@ -572,6 +587,13 @@ export class UrbanWastelandScene extends Phaser.Scene {
           gameBridge.emit('INTERACTION_UNAVAILABLE', {
             objectId: zone.config.id,
           });
+        }
+      }
+      // 天气门控 — 排水设施在非雨天气不显示交互提示
+      if (zone.available && zone.config.id === 'interaction.drainage_facility_01') {
+        if (currentWeather !== 'light_rain' && currentWeather !== 'heavy_rain') {
+          // 天气条件不满足，不作为可交互对象
+          continue;
         }
       }
       if (zone.available && !nearestAvailable) {
@@ -1070,6 +1092,46 @@ export class UrbanWastelandScene extends Phaser.Scene {
     if (this.isShutdown || this.cleanupCompleted) return;
     this.currentWeatherType = weather;
     this.weatherController?.applyWeather(weather);
+    // 更新天气门控交互对象的可见性和可交互性
+    this.updateWeatherGatedObjects(weather);
+  }
+
+  /**
+   * 更新天气条件交互对象的可见性和可交互性。
+   *
+   * 三层天气门控的第 1、2 层：
+   * 1. 非 heavy_rain 时隐藏暴雨垃圾对象；
+   * 2. 非 heavy_rain 时禁用其交互区域和交互提示；
+   *    非light_rain/heavy_rain时隐藏排水设施交互。
+   *
+   * 第 3 层（Store 校验）在 dailyTaskStore.applyProgress 中完成。
+   */
+  private updateWeatherGatedObjects(weather: WeatherType): void {
+    if (this.isShutdown || this.cleanupCompleted) return;
+
+    for (const zone of this.interactionZones) {
+      if (zone.isDestroyed) continue;
+      const config = zone.config;
+      if (!this.weatherGatedObjectIds.has(config.id)) continue;
+
+      // 暴雨垃圾仅在 heavy_rain 下可见和可交互
+      if (config.id === 'interaction.storm_debris_01') {
+        const visible = weather === 'heavy_rain';
+        const gameObject = zone.getGameObject();
+        if (gameObject && gameObject.scene) {
+          gameObject.setVisible(visible);
+          gameObject.setActive(visible);
+        }
+        if (!visible) {
+          zone.forceUnavailable();
+        }
+        // visible 时不需要额外操作 — checkAvailability 会自动恢复
+      }
+
+      // 排水设施在 light_rain 或 heavy_rain 下可交互
+      // 视觉上始终可见，但交互提示在天气不匹配时不显示
+      // 交互禁用在 updateInteractions 中通过 weatherGatedObjectIds 检查
+    }
   }
 }
 

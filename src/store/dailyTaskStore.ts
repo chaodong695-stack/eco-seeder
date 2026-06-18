@@ -13,6 +13,7 @@ import type { DailyTaskInstance, DailyTaskStatus, TaskProgressSignal } from '@/d
 import {
   DAILY_TASK_DEFINITIONS,
   DAILY_TASK_POOL_VERSION,
+  DAILY_TASKS_PER_DAY,
   findDailyTaskById,
 } from '@/domain/tasks/dailyTaskDefinitions';
 import { generateDailyTasks } from '@/domain/tasks/dailyTaskGenerator';
@@ -52,7 +53,7 @@ interface DailyTaskStoreState {
   /** 根据当前天气刷新任务状态（active ↔ waiting_condition）。 */
   refreshWeatherConditions: () => void;
   /** 接取任务。 */
-  acceptTask: (taskId: string) => boolean;
+  acceptTask: (instanceId: string) => boolean;
   /** 应用进度信号。 */
   applyProgress: (signal: TaskProgressSignal) => void;
   /** 获取指定 NPC 负责的任务列表。 */
@@ -61,6 +62,33 @@ interface DailyTaskStoreState {
   getAllTasks: () => DailyTaskInstance[];
   /** 重置（返回开始页时调用）。 */
   resetDailyTasks: () => void;
+}
+
+/**
+ * 从持久化数据中过滤掉重复的 taskId 或 instanceId。
+ *
+ * 如果存在重复，只保留第一个出现的实例。
+ * 返回去重后的任务列表和是否有重复被移除的标志。
+ */
+function deduplicatePersistedTasks(
+  tasks: DailyTaskInstance[],
+): { tasks: DailyTaskInstance[]; hadDuplicates: boolean } {
+  const seenTaskIds = new Set<string>();
+  const seenInstanceIds = new Set<string>();
+  const result: DailyTaskInstance[] = [];
+  let hadDuplicates = false;
+
+  for (const inst of tasks) {
+    if (seenTaskIds.has(inst.taskId) || seenInstanceIds.has(inst.instanceId)) {
+      hadDuplicates = true;
+      continue;
+    }
+    seenTaskIds.add(inst.taskId);
+    seenInstanceIds.add(inst.instanceId);
+    result.push(inst);
+  }
+
+  return { tasks: result, hadDuplicates };
 }
 
 /**
@@ -111,9 +139,14 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
     // 尝试从 localStorage 恢复
     const persisted = loadDailyTasks();
     if (isPersistDataValid(persisted, localDate, MAP_ID, DAILY_TASK_POOL_VERSION)) {
+      // 过滤重复 taskId 或 instanceId — 已经存储的重复任务数据自动失效
+      const { tasks: dedupedTasks, hadDuplicates } = deduplicatePersistedTasks(
+        persisted.tasks,
+      );
+
       // 恢复后根据当前天气刷新状态
       const currentWeather = getCurrentDisplayWeather();
-      const refreshedTasks = persisted.tasks.map((inst) => {
+      const refreshedTasks = dedupedTasks.map((inst) => {
         const def = findDailyTaskById(inst.taskId);
         if (!def) return inst;
         if (inst.status === 'completed') return inst;
@@ -121,6 +154,31 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
         const newStatus = resolveTaskStatus(def, inst.status, currentWeather);
         return { ...inst, status: newStatus };
       });
+
+      // 如果有重复数据被移除或任务数量不足，重新生成
+      if (hadDuplicates || refreshedTasks.length !== DAILY_TASKS_PER_DAY) {
+        const availableWeatherTypes = getAvailableWeatherTypes();
+        const newTasks = generateDailyTasks(
+          {
+            anonymousPlayerId: ANONYMOUS_PLAYER_ID,
+            localDate,
+            mapId: MAP_ID,
+            dailyTaskPoolVersion: DAILY_TASK_POOL_VERSION,
+            availableWeatherTypes,
+          },
+          DAILY_TASK_DEFINITIONS,
+        );
+
+        set({
+          tasks: newTasks,
+          localDate,
+          isInitialized: true,
+          contributedSources: new Set<string>(),
+        });
+        persistTasks(newTasks, localDate);
+        gameBridge.emit('DAILY_TASKS_GENERATED', { tasks: newTasks });
+        return;
+      }
 
       set({
         tasks: refreshedTasks,
@@ -189,27 +247,27 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
     }
   },
 
-  acceptTask: (taskId: string): boolean => {
+  acceptTask: (instanceId: string): boolean => {
     const state = get();
-    const inst = state.tasks.find((t) => t.taskId === taskId);
+    const inst = state.tasks.find((t) => t.instanceId === instanceId);
     if (!inst || inst.status !== 'available') return false;
 
-    const def = findDailyTaskById(taskId);
+    const def = findDailyTaskById(inst.taskId);
     if (!def) return false;
 
     const currentWeather = getCurrentDisplayWeather();
     const newStatus: DailyTaskStatus = resolveTaskStatus(def, 'active', currentWeather);
 
     const updatedTasks = state.tasks.map((t) =>
-      t.taskId === taskId ? { ...t, status: newStatus } : t,
+      t.instanceId === instanceId ? { ...t, status: newStatus } : t,
     );
 
     set({ tasks: updatedTasks });
     persistTasks(updatedTasks, state.localDate);
 
     gameBridge.emit('DAILY_TASK_STATUS_CHANGED', {
-      instanceId: inst.instanceId,
-      taskId,
+      instanceId,
+      taskId: inst.taskId,
       previousStatus: 'available',
       currentStatus: newStatus,
     });
@@ -222,11 +280,23 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
     let changed = false;
     // 复制 contributedSources 以确保 Zustand 检测到变更
     const newContributedSources = new Set(state.contributedSources);
+    // 获取当前天气用于进度校验
+    const currentWeather = getCurrentDisplayWeather();
 
     const updatedTasks = state.tasks.map((inst) => {
       const def = findDailyTaskById(inst.taskId);
       if (!def) return inst;
       if (def.objectiveType !== signal.objectiveType) return inst;
+
+      // 天气门控 — 在 Store 层再次校验当前天气条件
+      // 非无条件任务在天气条件不满足时不计进度
+      if (
+        def.condition?.supportedWeather &&
+        def.condition.supportedWeather.length > 0 &&
+        !def.condition.supportedWeather.includes(currentWeather)
+      ) {
+        return inst;
+      }
 
       const result = reduceTaskProgress(inst, signal, newContributedSources);
       if (result.changed) {

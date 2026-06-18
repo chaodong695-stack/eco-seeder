@@ -849,6 +849,13 @@ anonymousPlayerId:localDate:mapId:dailyTaskPoolVersion
 - 天气条件任务只有在当日天气时间线中至少出现一次对应天气时才可生成；
 - 天气任务不足时用普通任务补位。
 
+唯一性保障：
+- `dailyTaskGenerator` 使用无放回抽样（Fisher-Yates），确保同一任务定义不会被多次选中；
+- 生成后调用 `validateTaskUniqueness` 校验 taskId 和 instanceId 均唯一；
+- `instanceId` 由种子和 taskId 确定性生成（`{taskId}:{hash(seed:taskId)}`），保证稳定且唯一；
+- `dailyTaskStore` 加载持久化数据时通过 `deduplicatePersistedTasks` 拒绝重复 taskId 或 instanceId；
+- 已存储的重复任务数据自动失效并重新生成。
+
 ### 15.4 天气条件规则
 
 - 无天气限制的任务在任意天气下均可执行。
@@ -856,6 +863,18 @@ anonymousPlayerId:localDate:mapId:dailyTaskPoolVersion
   - 当日天气时间线中出现对应天气 → 允许生成该任务。
   - 当前天气满足条件 → 任务可执行（`active`）。
   - 当前天气不满足 → 任务显示“等待天气”（`waiting_condition`），不删除或替换。
+
+三层天气门控：
+
+1. **场景层（VisualController）**：非 `heavy_rain` 时隐藏暴雨垃圾对象（`setVisible(false)` / `setActive(false)`）；
+2. **交互层（InteractionZone）**：非 `heavy_rain` 时禁用暴雨垃圾交互区域和交互提示；非 `light_rain`/`heavy_rain` 时不显示排水设施交互提示；
+3. **Store 层（dailyTaskStore.applyProgress）**：处理 `PROGRESS_SIGNAL` 时再次校验当前天气，天气条件不满足时不计进度。
+
+正确规则：
+- 暴雨垃圾仅在 `heavy_rain` 下可见和可交互；
+- 排水设施仅在 `light_rain` 或 `heavy_rain` 下可计入任务进度；
+- 条件不满足时不得显示可交互提示，不得增加进度；
+- 天气回来切换不得重复创建对象或重复累计 sourceId。
 
 ### 15.5 持久化结构
 
@@ -872,6 +891,11 @@ interface DailyTaskPersistData {
 
 使用 Zod 校验，数据损坏时安全回退并重新生成。
 localStorage 只是持久化介质，不是运行时事实来源。
+
+加载时去重：
+- `dailyTaskStore.init()` 加载持久化数据时调用 `deduplicatePersistedTasks`；
+- 如果存在重复 taskId 或 instanceId，只保留第一个出现的实例；
+- 如果去重后任务数量不足或检测到重复，自动重新生成当日任务。
 
 ### 15.6 第二 NPC 定义
 
@@ -891,6 +915,24 @@ interface NpcDefinition {
 
 第二 NPC：`npc_weather_ranger`（环境巡查员），负责天气巡查、排水设施检查、暴雨垃圾扩散和雾天风险任务。
 
+NPC 碰撞策略：
+- `npc.engineer.lin`（林工）保留实体碰撞（`collider`），不位于主要通行路线；
+- `npc_weather_ranger`（巡查员）使用非阻挡型触发器（`overlap`），玩家可以穿过，不阻挡通路。
+
+NPC 任务接取：
+- `dailyTaskStore.acceptTask(instanceId)` 提供统一的接取接口；
+- 所属 NPC 对话框列出其负责的可接取任务；
+- 提供明确的接取操作（接取按钮）；
+- 接取后更新 Store、持久化和 NPC 指示符；
+- 发出一次 `DAILY_TASK_STATUS_CHANGED` 事件；
+- 已接取和已完成任务不可重复接取。
+
+NPC 指示符：
+- `!`：有可接取任务；
+- `…`：任务进行中（`active`）；
+- `⏳`：等待天气（`waiting_condition`）；
+- `✓`：今日任务已完成。
+
 ### 15.7 生命周期和清理
 
 - Scene `create()` 中初始化每日任务 Store（幂等）。
@@ -898,6 +940,18 @@ interface NpcDefinition {
 - NPC 在 `create()` 中创建，`handleSceneCleanup()` 中销毁，不重复创建。
 - 返回开始页不清空当日任务，重新进入后恢复进度。
 - 日期变化后自动生成新一日任务。
+
+### 15.8 UI 布局
+
+右侧栏统一纵向排列：
+```text
+区域状态面板（EnvironmentStatusPanel）
+每日任务面板（DailyTaskPanel）
+```
+
+- 使用 `RightSidebar` 容器统一管理右侧面板布局；
+- 各面板设置 `max-height` 和内部滚动，不互相遮挡；
+- 不得仅通过修改 `z-index` 隐藏其中一个面板。
 
 ---
 

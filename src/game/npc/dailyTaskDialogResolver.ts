@@ -23,8 +23,8 @@ export interface DailyTaskDialogOption {
   label: string;
   /** 选项动作。 */
   action: DailyTaskDialogAction;
-  /** 关联的任务 ID（accept_one 时使用）。 */
-  taskId?: string;
+  /** 关联的任务实例 ID（accept_one 时使用）。 */
+  instanceId?: string;
 }
 
 /** 每日任务对话内容。 */
@@ -122,7 +122,7 @@ export function resolveDailyTaskDialog(
           options.push({
             label: `接取：${def.title}`,
             action: 'accept_one',
-            taskId: inst.taskId,
+            instanceId: inst.instanceId,
           });
         }
       }

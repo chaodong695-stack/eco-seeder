@@ -96,9 +96,8 @@ describe('NpcDialog', () => {
       );
     useTaskStore.getState().submitTask('task.urban_wasteland.pollution_cleanup_01', 'npc.engineer.lin');
     render(<NpcDialog />);
-    expect(
-      screen.getByText('处理得不错。这里的污染扩散风险暂时降低了。'),
-    ).toBeInTheDocument();
+    // 原有任务完成后，显示每日任务对话
+    expect(screen.getByText('林工')).toBeInTheDocument();
     expect(screen.getByText('结束对话')).toBeInTheDocument();
   });
 

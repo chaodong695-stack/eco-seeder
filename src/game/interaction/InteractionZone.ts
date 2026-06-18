@@ -48,9 +48,26 @@ export class InteractionZone {
   }
 
   /**
+   * 强制设置为不可用状态。
+   *
+   * 用于天气门控等场景，当条件不满足时禁用交互。
+   */
+  forceUnavailable(): void {
+    this.isAvailable = false;
+  }
+
+  /**
    * 检查玩家是否在交互范围内，返回可用状态是否变化。
    */
   checkAvailability(playerX: number, playerY: number): boolean {
+    // 如果对象未激活（如暴雨垃圾在非暴雨天气被隐藏）— 不可用
+    const gameObject = this.gameObject;
+    if (gameObject && !gameObject.active) {
+      const wasAvailable = this.isAvailable;
+      this.isAvailable = false;
+      return this.isAvailable !== wasAvailable;
+    }
+
     const dx = playerX - this.config.x;
     const dy = playerY - this.config.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
