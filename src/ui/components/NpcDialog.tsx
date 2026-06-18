@@ -1,23 +1,17 @@
 /**
  * NPC 对话框组件。
  *
- * DEV-03：对话内容由 npcDialogResolver 根据任务状态解析；
- * DEV-06：支持每日任务 NPC（巡查员和林工），根据每日任务状态显示不同对话。
- *
- * 对话选项触发对应任务动作。
- * 打开对话时玩家移动通过 UI Store inputMode 暂停。
- *
- * 对于同时拥有原有任务和每日任务的 NPC（如林工），对话中同时展示两类任务。
+ * DEV-06 第二轮修复：
+ * - 所有 NPC 只展示每日任务对话，不再混入旧任务系统；
+ * - 林工不再出现"清理污染物"独立任务接受对话；
+ * - 对话选项只触发每日任务动作。
  */
 
 import { useCallback, useEffect, useMemo } from 'react';
 import { useUIStore } from '@/store/uiStore';
-import { useTaskStore } from '@/store/taskStore';
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { findNpcById } from '@/game/npc/npcDefinitions';
-import { resolveDialog, type DialogActionType } from '@/game/npc/npcDialogResolver';
 import { resolveDailyTaskDialog, type DailyTaskDialogAction, type DailyTaskDialogOption } from '@/game/npc/dailyTaskDialogResolver';
-import { TASK_DEFINITIONS } from '@/game/tasks/taskDefinitions';
 import { gameBridge } from '@/game/bridge/GameBridge';
 import styles from './NpcDialog.module.css';
 
@@ -27,9 +21,6 @@ const DAILY_TASK_NPC_IDS = new Set(['npc_weather_ranger', 'npc.engineer.lin']);
 export function NpcDialog() {
   const currentNpcId = useUIStore((s) => s.currentNpcId);
   const setNpcDialogOpen = useUIStore((s) => s.setNpcDialogOpen);
-  const tasks = useTaskStore((s) => s.tasks);
-  const acceptTask = useTaskStore((s) => s.acceptTask);
-  const submitTask = useTaskStore((s) => s.submitTask);
 
   const dailyTasks = useDailyTaskStore((s) => s.tasks);
   const acceptDailyTask = useDailyTaskStore((s) => s.acceptTask);
@@ -41,32 +32,15 @@ export function NpcDialog() {
   // 是否为每日任务 NPC
   const isDailyTaskNpc = currentNpcId ? DAILY_TASK_NPC_IDS.has(currentNpcId) : false;
 
-  // 查找该 NPC 发布的（原有）任务
-  const taskDef = useMemo(
-    () => TASK_DEFINITIONS.find((t) => t.giverNpcId === currentNpcId),
-    [currentNpcId],
-  );
-
-  // 当前（原有）任务状态
-  const taskStatus = taskDef ? tasks[taskDef.id]?.status : undefined;
-
   // 每日任务 NPC 负责的任务列表
-  // dailyTasks 是依赖项，确保任务状态变化时重新计算
   const npcDailyTasks = useMemo(
     () => (currentNpcId ? dailyTaskNpcTasks(currentNpcId) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [currentNpcId, dailyTaskNpcTasks, dailyTasks],
   );
 
-  // 解析原有任务对话内容
-  const legacyDialog = useMemo(() => {
-    if (!npcDef || !taskDef) return null;
-    const status = taskStatus ?? 'available';
-    return resolveDialog(npcDef.displayName, npcDef.role, status);
-  }, [npcDef, taskDef, taskStatus]);
-
   // 解析每日任务对话内容
-  const dailyDialog = useMemo(() => {
+  const dialog = useMemo(() => {
     if (!npcDef || !isDailyTaskNpc) return null;
     return resolveDailyTaskDialog(
       npcDef.displayName,
@@ -76,33 +50,6 @@ export function NpcDialog() {
     );
   }, [npcDef, isDailyTaskNpc, npcDailyTasks]);
 
-  // 合并后的对话内容
-  const dialog = useMemo(() => {
-    if (!npcDef) return null;
-
-    // 纯每日任务 NPC（巡查员）— 只显示每日任务对话
-    if (isDailyTaskNpc && !taskDef) {
-      return dailyDialog;
-    }
-
-    // 同时有原有任务和每日任务的 NPC（林工）— 合并显示
-    if (isDailyTaskNpc && taskDef && dailyDialog) {
-      // 如果原有任务未完成，优先显示原有任务对话
-      // 同时在对话中附加每日任务信息
-      if (taskStatus !== 'completed') {
-        return legacyDialog;
-      }
-      // 原有任务已完成，显示每日任务对话
-      return dailyDialog;
-    }
-
-    // 纯原有任务 NPC
-    return legacyDialog;
-  }, [npcDef, isDailyTaskNpc, taskDef, dailyDialog, legacyDialog, taskStatus]);
-
-  // 是否当前显示的是每日任务对话
-  const showingDailyTask = dialog === dailyDialog;
-
   // 关闭对话
   const closeDialog = useCallback(() => {
     const npcId = currentNpcId;
@@ -111,46 +58,6 @@ export function NpcDialog() {
       gameBridge.emit('NPC_DIALOG_CLOSE', { npcId });
     }
   }, [currentNpcId, setNpcDialogOpen]);
-
-  // 处理原有任务选项
-  const handleLegacyOption = (action: DialogActionType) => {
-    switch (action) {
-      case 'accept_task': {
-        if (taskDef) {
-          const success = acceptTask(taskDef.id);
-          if (success) {
-            gameBridge.emit('TASK_ACCEPTED', {
-              taskId: taskDef.id,
-              npcId: taskDef.giverNpcId,
-            });
-          }
-        }
-        closeDialog();
-        break;
-      }
-      case 'submit_task': {
-        if (taskDef && currentNpcId) {
-          const success = submitTask(taskDef.id, currentNpcId);
-          if (success) {
-            gameBridge.emit('TASK_COMPLETED', {
-              taskId: taskDef.id,
-              npcId: currentNpcId,
-              reward: taskDef.reward,
-            });
-            gameBridge.emit('TASK_FEEDBACK', {
-              message: `任务完成！获得生态点数 ${taskDef.reward.ecoPoints}，声望 ${taskDef.reward.reputation}。`,
-            });
-          }
-        }
-        closeDialog();
-        break;
-      }
-      case 'dismiss':
-      case 'close':
-        closeDialog();
-        break;
-    }
-  };
 
   // 处理每日任务选项
   const handleDailyTaskOption = (action: DailyTaskDialogAction, instanceId?: string) => {
@@ -210,35 +117,19 @@ export function NpcDialog() {
           ))}
         </div>
         <div className={styles.dialogFooter}>
-          {showingDailyTask
-            ? (dialog.options as DailyTaskDialogOption[]).map((option, idx) => (
-                <button
-                  key={idx}
-                  className={`${styles.optionBtn} ${
-                    option.action === 'accept_one' || option.action === 'accept_all'
-                      ? styles.optionAccept
-                      : styles.optionDefault
-                  }`}
-                  onClick={() => handleDailyTaskOption(option.action, option.instanceId)}
-                >
-                  {option.label}
-                </button>
-              ))
-            : (dialog.options as { label: string; action: DialogActionType }[]).map((option, idx) => (
-                <button
-                  key={idx}
-                  className={`${styles.optionBtn} ${
-                    option.action === 'accept_task'
-                      ? styles.optionAccept
-                      : option.action === 'submit_task'
-                        ? styles.optionSubmit
-                        : styles.optionDefault
-                  }`}
-                  onClick={() => handleLegacyOption(option.action)}
-                >
-                  {option.label}
-                </button>
-              ))}
+          {(dialog.options as DailyTaskDialogOption[]).map((option, idx) => (
+            <button
+              key={idx}
+              className={`${styles.optionBtn} ${
+                option.action === 'accept_one' || option.action === 'accept_all'
+                  ? styles.optionAccept
+                  : styles.optionDefault
+              }`}
+              onClick={() => handleDailyTaskOption(option.action, option.instanceId)}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>

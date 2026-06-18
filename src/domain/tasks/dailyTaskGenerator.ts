@@ -121,6 +121,12 @@ export function validateTaskUniqueness(tasks: DailyTaskInstance[]): void {
  * 纯函数：相同输入始终生成相同输出。
  * 使用无放回抽样确保任务不重复。
  * 生成后校验 taskId 和 instanceId 唯一性。
+ *
+ * 不变量保证：
+ * - tasks.length === 3（候选不足时从全部定义安全补位）
+ * - taskId 和 instanceId 均唯一
+ * - 至少 1 个无天气条件任务
+ * - 最多 2 个严格天气条件任务
  */
 export function generateDailyTasks(
   input: DailyTaskGenerationInput,
@@ -135,13 +141,12 @@ export function generateDailyTasks(
   );
   const rng = createSeededRandom(seedNum);
 
-  // 过滤出当日可用的任务定义
+  // ── 步骤 1: 构建当天符合条件的候选池 ──
   const available = definitions.filter((def) =>
     isWeatherConditionPossible(def, input.availableWeatherTypes),
   );
 
   // 分离无天气限制任务和严格天气条件任务
-  // 使用可变数组作为候选池，支持无放回抽样
   const unconditionalPool = available.filter((def) => !hasWeatherCondition(def));
   const weatherPool = available.filter((def) => hasWeatherCondition(def));
 
@@ -149,27 +154,28 @@ export function generateDailyTasks(
   const selected: DailyTaskDefinition[] = [];
   const selectedIdSet = new Set<string>();
 
-  // 1. 先选最多 MAX_STRICT_WEATHER_TASKS 个严格天气条件任务（无放回）
+  // ── 步骤 2: 按确定性随机顺序无放回抽取 ──
+  // 2a. 先选最多 MAX_STRICT_WEATHER_TASKS 个严格天气条件任务
   const weatherPicked = sampleWithoutReplacement(rng, weatherPool, MAX_STRICT_WEATHER_TASKS);
   for (const def of weatherPicked) {
     selected.push(def);
     selectedIdSet.add(def.id);
   }
 
-  // 2. 至少选 MIN_UNCONDITIONAL_TASKS 个无天气限制任务（无放回）
+  // 2b. 至少选 MIN_UNCONDITIONAL_TASKS 个无天气限制任务
   const minUnconditional = sampleWithoutReplacement(rng, unconditionalPool, MIN_UNCONDITIONAL_TASKS);
   for (const def of minUnconditional) {
     selected.push(def);
     selectedIdSet.add(def.id);
   }
 
-  // 3. 如果还没满，从剩余可用任务中补位
-  // 合并剩余的无天气限制和天气条件任务作为补位池
+  // ── 步骤 3: 检测重复并从候选池补位 ──
+  // 从剩余的可用任务中补位（无天气限制 + 天气条件均可）
   const fillPool = [...unconditionalPool, ...weatherPool].filter(
     (def) => !selectedIdSet.has(def.id),
   );
 
-  const slotsLeft = DAILY_TASKS_PER_DAY - selected.length;
+  let slotsLeft = DAILY_TASKS_PER_DAY - selected.length;
   if (slotsLeft > 0 && fillPool.length > 0) {
     const extra = sampleWithoutReplacement(rng, fillPool, slotsLeft);
     for (const def of extra) {
@@ -178,16 +184,24 @@ export function generateDailyTasks(
     }
   }
 
-  // 4. 防御性处理：候选不足时尝试从全部可用任务中补位（无放回）
-  // 理论上 6 个定义总能选出 3 个，但防御性处理
+  // ── 步骤 4: 如果结果仍不足 3 个，从未选中的安全任务池继续补位 ──
+  // 安全任务池 = 全部定义中尚未选中的任务（忽略天气过滤）
+  // 这确保即使天气时间线为空或候选不足，仍能生成 3 个任务
   if (selected.length < DAILY_TASKS_PER_DAY) {
-    const fallbackPool = available.filter((def) => !selectedIdSet.has(def.id));
-    const fallbackSlots = DAILY_TASKS_PER_DAY - selected.length;
-    const fallback = sampleWithoutReplacement(rng, fallbackPool, fallbackSlots);
-    for (const def of fallback) {
+    const safePool = definitions.filter((def) => !selectedIdSet.has(def.id));
+    slotsLeft = DAILY_TASKS_PER_DAY - selected.length;
+    const safe = sampleWithoutReplacement(rng, safePool, slotsLeft);
+    for (const def of safe) {
       selected.push(def);
       selectedIdSet.add(def.id);
     }
+  }
+
+  // ── 步骤 5: 最终不足 3 个时明确失败，不得静默返回 1 个或 2 个任务 ──
+  if (selected.length < DAILY_TASKS_PER_DAY) {
+    throw new Error(
+      `Failed to generate ${DAILY_TASKS_PER_DAY} daily tasks: only ${selected.length} candidates available`,
+    );
   }
 
   // 确保不超过目标数量

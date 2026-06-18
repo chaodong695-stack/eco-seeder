@@ -224,4 +224,78 @@ describe('dailyTaskGenerator', () => {
       expect(tasks.every((t) => customDefs.some((d) => d.id === t.taskId))).toBe(true);
     });
   });
+
+  describe('backfill from safe pool when weather candidates insufficient', () => {
+    it('generates exactly 3 tasks when availableWeatherTypes is empty', () => {
+      const input: DailyTaskGenerationInput = {
+        ...BASE_INPUT,
+        availableWeatherTypes: [],
+      };
+      const tasks = generateDailyTasks(input, DAILY_TASK_DEFINITIONS);
+      expect(tasks).toHaveLength(DAILY_TASKS_PER_DAY);
+    });
+
+    it('generates exactly 3 tasks with only fog weather', () => {
+      const input: DailyTaskGenerationInput = {
+        ...BASE_INPUT,
+        availableWeatherTypes: ['fog'],
+      };
+      const tasks = generateDailyTasks(input, DAILY_TASK_DEFINITIONS);
+      expect(tasks).toHaveLength(DAILY_TASKS_PER_DAY);
+    });
+
+    it('generates exactly 3 tasks with only heavy_rain weather', () => {
+      const input: DailyTaskGenerationInput = {
+        ...BASE_INPUT,
+        availableWeatherTypes: ['heavy_rain'],
+      };
+      const tasks = generateDailyTasks(input, DAILY_TASK_DEFINITIONS);
+      expect(tasks).toHaveLength(DAILY_TASKS_PER_DAY);
+    });
+
+    it('always generates 3 tasks across multiple seeds', () => {
+      for (let m = 1; m <= 12; m++) {
+        for (let d = 1; d <= 28; d++) {
+          const date = `2025-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const input: DailyTaskGenerationInput = {
+            ...BASE_INPUT,
+            localDate: date,
+            availableWeatherTypes: [],
+          };
+          const tasks = generateDailyTasks(input, DAILY_TASK_DEFINITIONS);
+          expect(tasks).toHaveLength(DAILY_TASKS_PER_DAY);
+
+          // Verify uniqueness
+          const taskIds = tasks.map((t) => t.taskId);
+          const uniqueTaskIds = new Set(taskIds);
+          expect(uniqueTaskIds.size).toBe(taskIds.length);
+
+          const instanceIds = tasks.map((t) => t.instanceId);
+          const uniqueInstanceIds = new Set(instanceIds);
+          expect(uniqueInstanceIds.size).toBe(instanceIds.length);
+        }
+      }
+    });
+
+    it('fills 3 tasks even when only 2 unconditional tasks available and no weather', () => {
+      const input: DailyTaskGenerationInput = {
+        ...BASE_INPUT,
+        availableWeatherTypes: [],
+      };
+      const tasks = generateDailyTasks(input, DAILY_TASK_DEFINITIONS);
+      expect(tasks).toHaveLength(3);
+      // Should include weather tasks from safe pool
+      const taskIds = tasks.map((t) => t.taskId);
+      const uniqueTaskIds = new Set(taskIds);
+      expect(uniqueTaskIds.size).toBe(3);
+    });
+
+    it('throws when fewer than 3 definitions provided', () => {
+      const smallDefs: DailyTaskDefinition[] = [
+        { id: 'a', version: 1, title: 'A', description: '', npcId: 'n', objectiveType: 'a', targetValue: 1, weight: 1 },
+        { id: 'b', version: 1, title: 'B', description: '', npcId: 'n', objectiveType: 'b', targetValue: 1, weight: 1 },
+      ];
+      expect(() => generateDailyTasks(BASE_INPUT, smallDefs)).toThrow();
+    });
+  });
 });

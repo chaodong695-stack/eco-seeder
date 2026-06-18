@@ -3,10 +3,37 @@ import { gameBridge } from '@/game/bridge/GameBridge';
 import { useUIStore } from '@/store/uiStore';
 import { useTaskStore } from '@/store/taskStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
+import { useDailyTaskStore } from '@/store/dailyTaskStore';
+import { findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
 import { RestorationController } from '@/game/restoration/RestorationController';
 import { POLLUTION_ZONE_01_TARGET } from '@/game/restoration/restorationDefinitions';
 
 // ─── Phaser Mock with Scene lifecycle events ────────────────────────
+
+// Mock worldStore for dailyTaskStore.init()
+vi.mock('@/store/worldStore', () => ({
+  useWorldStore: {
+    getState: () => ({
+      timeSnapshot: { localDate: '2025-01-04' },
+      getWeatherTimeline: () => ({
+        date: '2025-01-04',
+        mapId: 'map.urban_wasteland',
+        seed: 'test',
+        entries: [
+          { id: '1', startMinute: 0, endMinute: 360, weather: 'clear', intensity: 0.2 },
+          { id: '2', startMinute: 361, endMinute: 720, weather: 'light_rain', intensity: 0.6 },
+          { id: '3', startMinute: 721, endMinute: 1080, weather: 'heavy_rain', intensity: 0.9 },
+          { id: '4', startMinute: 1081, endMinute: 1439, weather: 'fog', intensity: 0.7 },
+        ],
+      }),
+      getDisplayWeather: () => 'clear' as const,
+    }),
+    subscribe: vi.fn(() => () => {}),
+  },
+}));
+
+// Mock gameBridge for dailyTaskStore — use real implementation
+// (tests already import the real gameBridge)
 
 vi.mock('phaser', () => {
   const SHUTDOWN = 'shutdown';
@@ -146,7 +173,6 @@ vi.mock('phaser', () => {
 // ─── Test constants ─────────────────────────────────────────────────
 
 const INTERACTION_ID = 'interaction.pollution_zone_01';
-const TASK_ID = 'task.urban_wasteland.pollution_cleanup_01';
 
 // ─── Helper: create a Scene-like object that tracks VISUAL_STAGE_CHANGED ───
 
@@ -400,6 +426,8 @@ describe('RestorationController — task mode blocking', () => {
   let controller: RestorationController;
 
   beforeEach(() => {
+    localStorage.clear();
+    useDailyTaskStore.getState().resetDailyTasks();
     useTaskStore.getState().resetTasks();
     useUIStore.getState().returnToStart();
     useEnvironmentStore.getState().resetEnvironment();
@@ -407,8 +435,19 @@ describe('RestorationController — task mode blocking', () => {
     controller = new RestorationController(POLLUTION_ZONE_01_TARGET);
   });
 
+  function acceptWasteTask(): void {
+    useDailyTaskStore.getState().init();
+    const task = useDailyTaskStore.getState().tasks.find((t) => {
+      const def = findDailyTaskById(t.taskId);
+      return def?.objectiveType === 'collect_waste';
+    });
+    if (task) {
+      useDailyTaskStore.getState().acceptTask(task.instanceId);
+    }
+  }
+
   it('cannot start when inputMode is task', () => {
-    useTaskStore.getState().acceptTask(TASK_ID);
+    acceptWasteTask();
     useUIStore.getState().setTaskPanelOpen(true);
     expect(useUIStore.getState().inputMode).toBe('task');
 
@@ -420,7 +459,7 @@ describe('RestorationController — task mode blocking', () => {
   });
 
   it('in_progress restoration is interrupted when inputMode changes to task', () => {
-    useTaskStore.getState().acceptTask(TASK_ID);
+    acceptWasteTask();
 
     controller.setEKeyHeld(true);
     controller.setInRange(true);
@@ -433,7 +472,7 @@ describe('RestorationController — task mode blocking', () => {
   });
 
   it('can start after task panel is closed', () => {
-    useTaskStore.getState().acceptTask(TASK_ID);
+    acceptWasteTask();
     useUIStore.getState().setTaskPanelOpen(true);
 
     controller.setEKeyHeld(true);

@@ -5,7 +5,6 @@ import { usePlayerStore } from '@/store/playerStore';
 import { useTaskStore } from '@/store/taskStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { GameHud } from '@/ui/components/GameHud';
 import { InteractionPrompt } from '@/ui/components/InteractionPrompt';
 import { TaskPanel } from '@/ui/components/TaskPanel';
@@ -44,9 +43,6 @@ export function GamePage() {
       instance.mount(containerRef.current, character.gender);
       // 延迟设置就绪状态，等待 Phaser 初始化
       const timer = setTimeout(() => setIsReady(true), 300);
-
-      // 初始化每日任务（幂等）
-      useDailyTaskStore.getState().init();
 
       return () => {
         clearTimeout(timer);

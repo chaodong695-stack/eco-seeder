@@ -1,28 +1,16 @@
 /**
  * UrbanWastelandScene — 雾港旧工业区主场景。
  *
- * DEV-02 实现：
- * - 玩家 WASD / 方向键移动（对角线归一化）；
- * - 地图边界碰撞 + 至少 3 个静态障碍物；
- * - 摄像机平滑跟随；
- * - 至少 1 个占位交互对象（按 E 交互）；
- * - 通过 GameBridge 与 React UI 通信；
- * - 场景退出时注销所有事件和键盘监听。
+ * DEV-02: 玩家移动、碰撞、交互对象、GameBridge
+ * DEV-03: NPC 交互、输入锁定
+ * DEV-04: 污染物堆持续清理机制、RestorationController
+ * DEV-05: 昼夜和天气视觉
+ * DEV-06: 每日任务系统、第二 NPC、天气条件任务
  *
- * DEV-03 扩展：
- * - 新增占位 NPC（林工），配置驱动位置和碰撞体；
- * - NPC 交互接入对话系统；
- * - 污染物堆交互接入任务目标；
- * - 输入锁定（dialog / settings 模式暂停移动）；
- * - 任务状态通过 TaskStore 管理事件。
- *
- * DEV-04 扩展：
- * - 污染物堆升级为按住 E 持续清理机制；
- * - 集成 RestorationController 管理修复行为状态机；
- * - 修复进度通过 GameBridge 同步到 React UI；
- * - 环境效果通过 EnvironmentStore 管理；
- * - 场景视觉阶段由环境状态驱动（polluted → recovering）；
- * - 输入模式扩展 restoration 状态。
+ * DEV-06 第二轮修复：
+ * - NPC 全部改为非阻挡型（玩家可穿过），通过距离判断交互；
+ * - 污染物堆迁移到每日任务进度信号，不再使用旧 taskStore；
+ * - NPC 对话防重复触发（dialog 打开时不再重复打开）。
  */
 
 import Phaser from 'phaser';
@@ -35,7 +23,6 @@ import { INTERACTION_OBJECTS } from '../interaction/interactionObjects';
 import { WORLD_BOUNDS, CAMERA_FOLLOW } from '../config/movementConfig';
 import { NPC_DEFINITIONS } from '../npc/npcDefinitions';
 import type { NpcDefinition } from '../npc/npcTypes';
-import { useTaskStore } from '@/store/taskStore';
 import { useUIStore, type InputMode } from '@/store/uiStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
 import {
@@ -54,9 +41,6 @@ import type { DayPhase } from '@/domain/time/timeTypes';
 import type { WeatherType } from '@/domain/weather/weatherTypes';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
-
-/** 首个任务 ID 常量。 */
-const FIRST_TASK_ID = 'task.urban_wasteland.pollution_cleanup_01';
 
 /** 污染物堆交互对象 ID。 */
 const POLLUTION_ZONE_INTERACTION_ID = 'interaction.pollution_zone_01';
@@ -230,6 +214,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // 初始化世界状态（时间 + 天气）
     this.initWorldState();
+
+    // 初始化每日任务（在 worldStore 初始化之后，确保天气时间线可用）
+    useDailyTaskStore.getState().init();
 
     // 交互提示文本（跟随摄像机）
     this.interactionHintText = this.add
@@ -476,15 +463,12 @@ export class UrbanWastelandScene extends Phaser.Scene {
       body.updateFromGameObject();
 
       // NPC 碰撞策略：
-      // - 林工保留实体碰撞（不位于主要通行路线）
-      // - 巡查员使用非阻挡型触发器（避免阻挡通路）
-      if (config.id === 'npc_weather_ranger') {
-        // 巡查员 — 使用 overlap 代替 collider，玩家可以穿过
-        this.physics.add.overlap(this.player.gameObject, rect);
-      } else {
-        // 林工 — 保留碰撞
-        this.physics.add.collider(this.player.gameObject, rect);
-      }
+      // 所有 NPC 使用非阻挡型交互 — 玩家可以穿过 NPC。
+      // 通过距离判断显示"按 E 对话"，不阻止玩家移动。
+      // 使用 overlap 检测重叠，但不阻止移动。
+      this.physics.add.overlap(this.player.gameObject, rect);
+      // 禁用 NPC 物理碰撞体，玩家不会与其发生碰撞
+      body.checkCollision.none = true;
 
       const label = this.add.text(
         config.x,
@@ -666,12 +650,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
       let hint: string;
       const display = nearestAvailable.config.displayName;
       if (nearestAvailable.config.id === POLLUTION_ZONE_INTERACTION_ID) {
-        // 使用修复控制器获取提示
-        if (this.restorationController) {
-          hint = this.restorationController.getInteractionHint();
-        } else {
-          hint = '按 E 检查';
-        }
+        // 污染物堆 — 显示每日任务相关提示
+        hint = this.getPollutionZoneHint();
       } else {
         hint = '按 E 交互';
       }
@@ -686,6 +666,38 @@ export class UrbanWastelandScene extends Phaser.Scene {
       this.nearestNpcId = null;
       this.interactionHintText.setVisible(false);
     }
+  }
+
+  /**
+   * 获取污染物堆的交互提示文本。
+   *
+   * 根据每日任务状态显示不同提示：
+   * - 未接取"清理散落垃圾"任务 → 提示先向林工接取
+   * - 已接取且未完成 → 按住 E 清理
+   * - 已完成 → 已清理
+   */
+  private getPollutionZoneHint(): string {
+    const restorationStatus = this.restorationController?.getStatus();
+    if (restorationStatus === 'in_progress') return '正在清理污染物堆';
+    if (restorationStatus === 'completed') return '污染物堆 — 已完成清理';
+    if (restorationStatus === 'interrupted') return '清理已暂停 — 按住 E 继续';
+
+    // 检查每日任务状态 — 通过 objectiveType 查找
+    const wasteTask = useDailyTaskStore.getState().tasks.find((t) => {
+      const def = findDailyTaskById(t.taskId);
+      return def?.objectiveType === 'collect_waste';
+    });
+
+    if (!wasteTask || wasteTask.status === 'available') {
+      return '污染物堆 — 请先向林工接取今日清理任务';
+    }
+
+    if (wasteTask.status === 'completed') {
+      return '污染物堆 — 已完成清理';
+    }
+
+    // active 或 waiting_condition
+    return '污染物堆 — 按住 E 清理';
   }
 
   /**
@@ -705,46 +717,61 @@ export class UrbanWastelandScene extends Phaser.Scene {
   /**
    * E 键 keydown 处理 — 用于检查类交互。
    * 修复行为通过持续按住触发，不在此处理。
+   *
+   * NPC 对话防重复：dialog 已打开时不重复打开。
    */
   private handleEKeyDown(): void {
     // 修复中或非 gameplay 模式时，禁止检查交互
     if (this.inputMode !== 'gameplay') return;
 
-    // 如果最近的是污染物堆，根据修复状态决定行为
+    // 污染物堆交互 — 由每日任务状态控制
     if (
       this.nearestInteractionId === POLLUTION_ZONE_INTERACTION_ID &&
       !this.nearestIsNpc
     ) {
       if (this.restorationController) {
         const status = this.restorationController.getStatus();
-        const taskStatus = useTaskStore.getState().getTaskStatus(FIRST_TASK_ID);
 
         if (status === 'completed') {
-          // 已完成 — 显示已完成提示
           this.emitInteractionFeedback(
             POLLUTION_ZONE_INTERACTION_ID,
-            '该区域已经完成临时清理，请返回林工处报告。',
+            '该区域已经完成清理。',
           );
           return;
         }
 
-        if (taskStatus !== 'active') {
-          // 未接取任务 — 基础检查反馈
+        // 检查每日任务状态 — 通过 objectiveType 查找
+        const wasteTask = useDailyTaskStore.getState().tasks.find((t) => {
+          const def = findDailyTaskById(t.taskId);
+          return def?.objectiveType === 'collect_waste';
+        });
+
+        if (!wasteTask || wasteTask.status === 'available') {
+          // 未接取相应每日任务 — 提示但不创建独立任务
           this.emitInteractionFeedback(
             POLLUTION_ZONE_INTERACTION_ID,
-            '已检查污染区域，需要先向林工了解修复任务。',
+            '请先向林工接取今日清理任务。',
           );
           return;
         }
 
-        // 任务 active 且未完成 — 修复由持续按住 E 驱动
-        // keydown 时不做即时完成
+        if (wasteTask.status === 'completed') {
+          this.emitInteractionFeedback(
+            POLLUTION_ZONE_INTERACTION_ID,
+            '该区域已经完成清理。',
+          );
+          return;
+        }
+
+        // 任务 active 或 waiting_condition — 修复由持续按住 E 驱动
         return;
       }
     }
 
-    // NPC 交互
+    // NPC 交互 — 防重复打开对话框
     if (this.nearestIsNpc && this.nearestNpcId) {
+      // 如果对话框已经打开，不重复打开
+      if (useUIStore.getState().isNpcDialogOpen) return;
       this.openNpcDialog(this.nearestNpcId);
       return;
     }
@@ -795,7 +822,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       const tasks = useDailyTaskStore.getState().tasks;
       const inst = tasks.find((t) => t.taskId === 'daily_drainage_check');
       if (!inst || inst.status !== 'active') {
-        this.emitInteractionFeedback(objectId, def.description);
+        this.emitInteractionFeedback(objectId, '请先向巡查员接取排水设施检查任务。');
         return true;
       }
 
@@ -823,7 +850,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       const tasks = useDailyTaskStore.getState().tasks;
       const inst = tasks.find((t) => t.taskId === 'daily_storm_waste');
       if (!inst || inst.status !== 'active') {
-        this.emitInteractionFeedback(objectId, def.description);
+        this.emitInteractionFeedback(objectId, '请先向巡查员接取暴雨垃圾清理任务。');
         return true;
       }
 
@@ -962,8 +989,6 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private addPlaceholderVegetation(): void {
     if (this.vegetationGraphics.length > 0) return;
 
-    // 在污染物堆附近添加少量占位植被
-    const target = POLLUTION_ZONE_01_TARGET;
     const interactionObj = INTERACTION_OBJECTS.find(
       (o) => o.id === POLLUTION_ZONE_INTERACTION_ID,
     );
@@ -971,7 +996,6 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     const baseX = interactionObj.x;
     const baseY = interactionObj.y;
-    void target;
 
     // 添加 3 个小绿色矩形作为占位植被
     const positions = [
