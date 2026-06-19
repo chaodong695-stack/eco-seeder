@@ -19,12 +19,13 @@ import { gameBridge } from '../bridge/GameBridge';
 import { Player } from '../entities/Player';
 import type { MovementInput } from '../entities/movementVector';
 import { InteractionZone } from '../interaction/InteractionZone';
-import { INTERACTION_OBJECTS } from '../interaction/interactionObjects';
+import { INTERACTION_OBJECTS, SCENE_TEXTURE_KEYS } from '../interaction/interactionObjects';
 import { WORLD_BOUNDS, CAMERA_FOLLOW } from '../config/movementConfig';
 import { NPC_DEFINITIONS } from '../npc/npcDefinitions';
 import type { NpcDefinition } from '../npc/npcTypes';
 import { useUIStore, type InputMode } from '@/store/uiStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
+import { usePlayerStore } from '@/store/playerStore';
 import {
   POLLUTION_ZONE_01_TARGET,
   findRestorationTargetByInteractionId,
@@ -39,11 +40,27 @@ import { findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
 import { isWeatherConditionMet } from '@/domain/tasks/dailyTaskConditionResolver';
 import type { DayPhase } from '@/domain/time/timeTypes';
 import type { WeatherType } from '@/domain/weather/weatherTypes';
+import { sceneAssets } from '@/game/assets/assetManifest';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
 
-/** 污染物堆交互对象 ID。 */
-const POLLUTION_ZONE_INTERACTION_ID = 'interaction.pollution_zone_01';
+/** 场景纹理 key 常量。 */
+const SCENE_BG_TEXTURE = 'scene-bg-industrial-wasteland';
+const GROUND_TILE_TEXTURE = 'scene-tile-cracked-ground';
+const DECOR_RUINS_TEXTURE = 'scene-decor-industrial-ruins';
+const DECOR_PLANT_TEXTURE = 'scene-decor-ruin-plant';
+
+/** 深度层级常量。 */
+const DEPTH = {
+  background: 0,
+  ground: 1,
+  decor: 2,
+  obstacles: 5,
+  objects: 10,
+  player: 20,
+  labels: 30,
+  ui: 50,
+} as const;
 
 /** 静态障碍物配置 — 碰撞区域与视觉轮廓一致。 */
 interface ObstacleConfig {
@@ -60,6 +77,9 @@ const OBSTACLES: ObstacleConfig[] = [
   { x: 1500, y: 700, width: 180, height: 110, color: 0x1f3a3e },
   { x: 700, y: 850, width: 140, height: 80, color: 0x1a3538 },
 ];
+
+/** 污染物堆交互对象 ID。 */
+const POLLUTION_ZONE_INTERACTION_ID = 'interaction.pollution_zone_01';
 
 /** 场景内的 NPC 实体包装。 */
 interface NpcEntity {
@@ -153,6 +173,28 @@ export class UrbanWastelandScene extends Phaser.Scene {
     super({ key: SCENE_KEY });
   }
 
+  /**
+   * preload — 统一加载主场景图片资源。
+   *
+   * 所有图片通过 sceneAssets 统一路径引入，纹理 key 集中定义。
+   */
+  preload(): void {
+    this.load.image(SCENE_BG_TEXTURE, sceneAssets.backgrounds.industrialWasteland);
+    this.load.image(GROUND_TILE_TEXTURE, sceneAssets.tiles.crackedGround);
+    this.load.image(DECOR_RUINS_TEXTURE, sceneAssets.decor.industrialRuinsStrip);
+    this.load.image(DECOR_PLANT_TEXTURE, sceneAssets.decor.ruinPlantCluster);
+
+    // 交互物件图片
+    this.load.image(SCENE_TEXTURE_KEYS.pollutionPileLarge, sceneAssets.objects.pollutionPileLarge);
+    this.load.image(SCENE_TEXTURE_KEYS.restoredPlantsLarge, sceneAssets.objects.restoredPlantsLarge);
+    this.load.image(SCENE_TEXTURE_KEYS.drainageFacilityDamaged, sceneAssets.objects.drainageFacilityDamaged);
+    this.load.image(SCENE_TEXTURE_KEYS.environmentMonitorDevice, sceneAssets.objects.environmentMonitorDevice);
+
+    // 玩家侧视图
+    this.load.image('player-male-side', sceneAssets.characters.maleSide);
+    this.load.image('player-female-side', sceneAssets.characters.femaleSide);
+  }
+
   create(): void {
     const { width: W, height: H } = WORLD_BOUNDS;
 
@@ -175,25 +217,68 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.effectsLayer = this.add.container(0, 0);
     this.effectsLayer.setDepth(40);
 
-    // 背景
-    this.backgroundRect = this.add.rectangle(W / 2, H / 2, W, H, 0x1a2a2e);
-    this.backgroundLayer.add(this.backgroundRect);
+    // 背景 — 使用工业废墟背景图片，覆盖整个视口
+    if (this.textures.exists(SCENE_BG_TEXTURE)) {
+      const bgImage = this.add.image(W / 2, H / 2, SCENE_BG_TEXTURE);
+      // 缩放到覆盖整个世界
+      const scaleX = W / bgImage.width;
+      const scaleY = H / bgImage.height;
+      const scale = Math.max(scaleX, scaleY);
+      bgImage.setScale(scale);
+      bgImage.setDepth(DEPTH.background);
+      this.backgroundLayer.add(bgImage);
+      // 背景引用保留用于色调叠加（如有需要）
+      this.backgroundRect = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0);
+      this.backgroundLayer.add(this.backgroundRect);
+    } else {
+      this.backgroundRect = this.add.rectangle(W / 2, H / 2, W, H, 0x1a2a2e);
+      this.backgroundLayer.add(this.backgroundRect);
+    }
 
-    // 远处建筑轮廓（纯视觉装饰，不参与碰撞）
-    this.createPlaceholderBuildings();
+    // 轻微暗色遮罩 — 保证 HUD 可读性和交互物可见性
+    const darkOverlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.25);
+    darkOverlay.setDepth(DEPTH.background + 0.1);
+    this.backgroundLayer.add(darkOverlay);
 
-    // 地面
-    const ground = this.add.rectangle(W / 2, H - 100, W, 200, 0x2a3535);
-    this.midgroundLayer.add(ground);
+    // 工业废墟装饰条 — 中景装饰层，替换矩形建筑占位块
+    if (this.textures.exists(DECOR_RUINS_TEXTURE)) {
+      const ruinsImg = this.add.image(W / 2, H - 350, DECOR_RUINS_TEXTURE);
+      // 缩放到场景宽度
+      const ruinsScale = W / ruinsImg.width;
+      ruinsImg.setScale(ruinsScale);
+      ruinsImg.setDepth(DEPTH.decor);
+      ruinsImg.setAlpha(0.85);
+      this.backgroundLayer.add(ruinsImg);
+    } else {
+      // 回退到矩形建筑轮廓
+      this.createPlaceholderBuildings();
+    }
+
+    // 地面 — 使用龟裂地面纹理，保留原物理碰撞逻辑
+    if (this.textures.exists(GROUND_TILE_TEXTURE)) {
+      const groundImg = this.add.image(W / 2, H - 100, GROUND_TILE_TEXTURE);
+      // 缩放覆盖地面区域
+      const groundScale = Math.max(W / groundImg.width, 200 / groundImg.height);
+      groundImg.setScale(groundScale);
+      groundImg.setDepth(DEPTH.ground);
+      this.midgroundLayer.add(groundImg);
+    } else {
+      const ground = this.add.rectangle(W / 2, H - 100, W, 200, 0x2a3535);
+      ground.setDepth(DEPTH.ground);
+      this.midgroundLayer.add(ground);
+    }
 
     // 道路 / 活动区域占位
     const road = this.add.rectangle(W / 2, H - 200, W - 200, 60, 0x333f3f);
+    road.setDepth(DEPTH.ground);
     this.midgroundLayer.add(road);
 
     // 静态障碍物 — 碰撞区域与视觉轮廓一致
     this.obstacles = this.physics.add.staticGroup();
     for (const obs of OBSTACLES) {
       const rect = this.add.rectangle(obs.x, obs.y, obs.width, obs.height, obs.color);
+      rect.setDepth(DEPTH.obstacles);
+      rect.setAlpha(0.6);
       this.midgroundLayer.add(rect);
       this.physics.add.existing(rect, true);
       const body = rect.body as Phaser.Physics.Arcade.StaticBody;
@@ -202,8 +287,13 @@ export class UrbanWastelandScene extends Phaser.Scene {
       this.obstacles.add(rect);
     }
 
-    // 玩家
-    this.player = new Player(this, W / 2, H - 250, '生态修复员');
+    // 绿植装饰簇 — 场景装饰，不参与任务判定
+    this.createDecorPlants();
+
+    // 玩家 — 根据角色性别使用侧视图图片
+    const character = usePlayerStore.getState().character;
+    const gender = character?.gender;
+    this.player = new Player(this, W / 2, H - 250, '生态修复员', gender ?? undefined);
     this.interactiveLayer.add([this.player.gameObject]);
 
     // 玩家与障碍物碰撞
@@ -447,13 +537,45 @@ export class UrbanWastelandScene extends Phaser.Scene {
         bHeight,
         buildingColors[i % buildingColors.length],
       );
+      building.setDepth(DEPTH.decor);
       this.backgroundLayer.add(building);
+    }
+  }
+
+  /**
+   * 创建绿植装饰簇 — 使用真实图片素材布置在场景适当位置。
+   * 只作为装饰，不参与任务判定。
+   */
+  private createDecorPlants(): void {
+    if (!this.textures.exists(DECOR_PLANT_TEXTURE)) return;
+
+    const { height: H } = WORLD_BOUNDS;
+    // 在生态巡查点、修复区域周围、地图边缘布置装饰
+    const positions = [
+      { x: 250, y: H - 120, scale: 0.4 },
+      { x: 550, y: H - 100, scale: 0.35 },
+      { x: 1100, y: H - 110, scale: 0.4 },
+      { x: 1650, y: H - 120, scale: 0.35 },
+      { x: 180, y: H - 400, scale: 0.3 },
+      { x: 1750, y: H - 350, scale: 0.3 },
+    ];
+
+    for (const pos of positions) {
+      const plant = this.add.image(pos.x, pos.y, DECOR_PLANT_TEXTURE);
+      plant.setScale(pos.scale);
+      plant.setOrigin(0.5, 1);
+      plant.setDepth(DEPTH.decor);
+      plant.setAlpha(0.8);
+      this.backgroundLayer.add(plant);
     }
   }
 
   private createInteractionObjects(): void {
     for (const config of INTERACTION_OBJECTS) {
       const zone = new InteractionZone(this, config);
+      // 设置深度层级
+      const go = zone.getGameObject();
+      if (go) go.setDepth(DEPTH.objects);
       this.interactionZones.push(zone);
     }
   }
@@ -1054,9 +1176,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
     const stageConfig = target.visualStages.find((s) => s.stage === stage);
     if (!stageConfig) return;
 
-    // 更新背景色调
+    // 更新背景色调 — 使用半透明叠加而非完全覆盖背景图片
     if (this.backgroundRect && this.backgroundRect.scene) {
-      this.backgroundRect.setFillStyle(stageConfig.backgroundTint);
+      this.backgroundRect.setFillStyle(stageConfig.backgroundTint, 0.3);
     }
 
     // 更新污染物堆视觉
@@ -1084,20 +1206,24 @@ export class UrbanWastelandScene extends Phaser.Scene {
     );
     if (!zone || zone.isDestroyed) return;
 
+    // recovering 阶段 — 切换为修复后的绿植图片
+    const isRecovering = stageConfig.targetAlpha < 0.6;
     zone.updateVisual({
       color: stageConfig.targetColor,
       alpha: stageConfig.targetAlpha,
       scale: stageConfig.targetScale,
+      restored: isRecovering,
     });
 
     // 更新标签 — 在 updateVisual 之后调用，确保操作的是同一有效对象
-    if (stageConfig.targetAlpha < 0.6) {
+    if (isRecovering) {
       zone.setLabelText('已清理');
     }
   }
 
   /**
-   * 添加占位植被图形。
+   * 添加修复后植被装饰。
+   * 使用绿植装饰簇图片替代占位矩形。
    */
   private addPlaceholderVegetation(): void {
     if (this.vegetationGraphics.length > 0) return;
@@ -1110,17 +1236,36 @@ export class UrbanWastelandScene extends Phaser.Scene {
     const baseX = interactionObj.x;
     const baseY = interactionObj.y;
 
-    // 添加 3 个小绿色矩形作为占位植被
-    const positions = [
-      { x: baseX - 40, y: baseY + 20 },
-      { x: baseX + 35, y: baseY + 15 },
-      { x: baseX - 10, y: baseY + 40 },
-    ];
+    // 如果绿植装饰纹理可用，在修复区域周围放置装饰
+    if (this.textures.exists(DECOR_PLANT_TEXTURE)) {
+      const positions = [
+        { x: baseX - 40, y: baseY + 20, scale: 0.25 },
+        { x: baseX + 35, y: baseY + 15, scale: 0.22 },
+        { x: baseX - 10, y: baseY + 40, scale: 0.28 },
+      ];
 
-    for (const pos of positions) {
-      const veg = this.add.rectangle(pos.x, pos.y, 12, 16, 0x7ed957, 0.8);
-      this.interactiveLayer.add(veg);
-      this.vegetationGraphics.push(veg);
+      for (const pos of positions) {
+        const veg = this.add.image(pos.x, pos.y, DECOR_PLANT_TEXTURE);
+        veg.setScale(pos.scale);
+        veg.setOrigin(0.5, 1);
+        veg.setAlpha(0.85);
+        veg.setDepth(DEPTH.objects);
+        this.interactiveLayer.add(veg);
+        this.vegetationGraphics.push(veg as unknown as Phaser.GameObjects.Rectangle);
+      }
+    } else {
+      // 回退到占位矩形
+      const positions = [
+        { x: baseX - 40, y: baseY + 20 },
+        { x: baseX + 35, y: baseY + 15 },
+        { x: baseX - 10, y: baseY + 40 },
+      ];
+
+      for (const pos of positions) {
+        const veg = this.add.rectangle(pos.x, pos.y, 12, 16, 0x7ed957, 0.8);
+        this.interactiveLayer.add(veg);
+        this.vegetationGraphics.push(veg);
+      }
     }
   }
 

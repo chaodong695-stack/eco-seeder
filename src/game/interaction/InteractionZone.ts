@@ -7,36 +7,56 @@ export interface InteractionZoneVisualUpdate {
   color?: number;
   alpha?: number;
   scale?: number;
+  /** 是否切换为修复后的纹理。 */
+  restored?: boolean;
 }
 
 /**
  * 交互区域管理器。
  *
  * 管理单个交互对象的可视化、交互范围检测和触发逻辑。
+ *
+ * 当 config.textureKey 提供时，使用 Image 精灵渲染真实图片素材；
+ * 否则回退到颜色矩形占位。无论使用哪种视觉，碰撞和交互判定逻辑不变。
  */
 export class InteractionZone {
   readonly config: InteractionObjectConfig;
-  private gameObject: Phaser.GameObjects.Rectangle | null;
+  private visualObject: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
   private label: Phaser.GameObjects.Text | null;
   /** 持有创建此对象的 Scene 引用，用于销毁后验证。 */
   private readonly scene: Phaser.Scene;
   private isAvailable = false;
   private lastTriggerTime = 0;
   private destroyed = false;
+  private isRestored = false;
 
   constructor(scene: Phaser.Scene, config: InteractionObjectConfig) {
     this.config = config;
     this.scene = scene;
 
-    this.gameObject = scene.add.rectangle(
-      config.x,
-      config.y,
-      config.width,
-      config.height,
-      config.color,
-      0.7,
-    );
-    this.gameObject.setStrokeStyle(2, 0xffffff, 0.4);
+    // 如果提供了纹理 key 且纹理已加载，使用 Image 精灵；否则回退到颜色矩形
+    if (config.textureKey && scene.textures.exists(config.textureKey)) {
+      const img = scene.add.image(config.x, config.y, config.textureKey);
+      // 缩放到目标显示高度
+      if (config.displayHeight) {
+        this.scaleImageToHeight(img, config.displayHeight);
+      }
+      // 以底部中心为对齐点
+      img.setOrigin(0.5, 1);
+      img.setPosition(config.x, config.y + (config.height / 2));
+      this.visualObject = img;
+    } else {
+      const rect = scene.add.rectangle(
+        config.x,
+        config.y,
+        config.width,
+        config.height,
+        config.color,
+        0.7,
+      );
+      rect.setStrokeStyle(2, 0xffffff, 0.4);
+      this.visualObject = rect;
+    }
 
     this.label = scene.add.text(config.x, config.y - config.height / 2 - 10, config.displayName, {
       fontSize: '12px',
@@ -45,6 +65,24 @@ export class InteractionZone {
       padding: { x: 4, y: 2 },
     });
     this.label.setOrigin(0.5);
+  }
+
+  /**
+   * 将 Image 缩放到指定显示高度，保持宽高比。
+   */
+  private scaleImageToHeight(
+    img: Phaser.GameObjects.Image,
+    targetHeight: number,
+  ): Phaser.GameObjects.Image {
+    const texture = img.texture;
+    if (texture && texture.source[0]) {
+      const sourceHeight = texture.source[0].height;
+      if (sourceHeight > 0) {
+        const scale = targetHeight / sourceHeight;
+        img.setScale(scale);
+      }
+    }
+    return img;
   }
 
   /**
@@ -61,8 +99,8 @@ export class InteractionZone {
    */
   checkAvailability(playerX: number, playerY: number): boolean {
     // 如果对象未激活（如暴雨垃圾在非暴雨天气被隐藏）— 不可用
-    const gameObject = this.gameObject;
-    if (gameObject && !gameObject.active) {
+    const visualObj = this.visualObject;
+    if (visualObj && !visualObj.active) {
       const wasAvailable = this.isAvailable;
       this.isAvailable = false;
       return this.isAvailable !== wasAvailable;
@@ -94,27 +132,67 @@ export class InteractionZone {
   }
 
   /**
-   * 更新视觉外观（颜色、透明度、缩放）。
+   * 更新视觉外观（颜色、透明度、缩放、恢复状态）。
    */
   updateVisual(update: InteractionZoneVisualUpdate): void {
-    if (this.destroyed || !this.gameObject) return;
-    if (!this.isGameObjectValid()) return;
-    if (update.color !== undefined) {
-      this.gameObject.setFillStyle(update.color, update.alpha ?? this.gameObject.alpha);
+    if (this.destroyed) return;
+    if (!this.isVisualObjectValid()) return;
+
+    // 切换为修复后纹理
+    if (update.restored && !this.isRestored && this.config.restoredTextureKey) {
+      const texKey = this.config.restoredTextureKey;
+      if (this.scene.textures.exists(texKey)) {
+        // 如果是 Image，直接换纹理；如果是 Rectangle，转换为 Image
+        if (this.isImageObject()) {
+          (this.visualObject as Phaser.GameObjects.Image).setTexture(texKey);
+          if (this.config.displayHeight) {
+            this.scaleImageToHeight(this.visualObject as Phaser.GameObjects.Image, this.config.displayHeight);
+          }
+        } else {
+          // 从 Rectangle 切换到 Image
+          const oldRect = this.visualObject;
+          const img = this.scene.add.image(this.config.x, this.config.y, texKey);
+          if (this.config.displayHeight) {
+            this.scaleImageToHeight(img, this.config.displayHeight);
+          }
+          img.setOrigin(0.5, 1);
+          img.setPosition(this.config.x, this.config.y + (this.config.height / 2));
+          img.setDepth(oldRect.depth);
+          oldRect.destroy();
+          this.visualObject = img;
+        }
+        this.isRestored = true;
+      }
     }
-    if (update.alpha !== undefined && update.color === undefined) {
-      this.gameObject.setAlpha(update.alpha);
+
+    if (update.alpha !== undefined) {
+      this.visualObject.setAlpha(update.alpha);
     }
     if (update.scale !== undefined) {
-      this.gameObject.setScale(update.scale);
+      this.visualObject.setScale(update.scale);
     }
+    // color 只对 Rectangle 有效
+    if (update.color !== undefined && !this.isImageObject()) {
+      (this.visualObject as Phaser.GameObjects.Rectangle).setFillStyle(
+        update.color,
+        update.alpha ?? (this.visualObject as Phaser.GameObjects.Rectangle).alpha,
+      );
+    }
+  }
+
+  /**
+   * 检查当前视觉对象是否为 Image 类型。
+   * 使用 type 字符串判断，避免 instanceof 在测试 mock 环境下的问题。
+   */
+  private isImageObject(): boolean {
+    return this.visualObject.type === 'Image';
   }
 
   /**
    * 获取当前视觉对象（用于场景层面的额外操作）。
    */
-  getGameObject(): Phaser.GameObjects.Rectangle | null {
-    return this.gameObject;
+  getGameObject(): Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle | null {
+    return this.destroyed ? null : this.visualObject;
   }
 
   /**
@@ -139,24 +217,21 @@ export class InteractionZone {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    // 先销毁 label，再销毁 gameObject
+    // 先销毁 label，再销毁 visualObject
     if (this.label) {
       this.label.destroy();
       this.label = null;
     }
-    if (this.gameObject) {
-      this.gameObject.destroy();
-      this.gameObject = null;
-    }
+    this.visualObject.destroy();
   }
 
   /**
-   * 验证 gameObject Rectangle 对象仍然有效。
+   * 验证视觉对象仍然有效。
    */
-  private isGameObjectValid(): boolean {
-    if (!this.gameObject) return false;
+  private isVisualObjectValid(): boolean {
+    if (!this.visualObject) return false;
     if (!this.scene || !this.scene.sys.isActive()) return false;
-    if (this.gameObject.scene === null || this.gameObject.scene === undefined) return false;
+    if (this.visualObject.scene === null || this.visualObject.scene === undefined) return false;
     return true;
   }
 

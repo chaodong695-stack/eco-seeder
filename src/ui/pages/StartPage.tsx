@@ -34,6 +34,8 @@ export function StartPage() {
             从污染到绿意 — 修复每一寸受损的土地，重建生态平衡
           </p>
         </div>
+        {/* 方案 A：版本标签作为按钮上方独立徽章，不遮挡按钮主文案 */}
+        <span className={styles.versionBadge}>v0.1 · 生态修复原型</span>
         <button
           className={styles.startButton}
           onClick={handleStart}
@@ -41,7 +43,6 @@ export function StartPage() {
           <span className={styles.startButtonIcon}>🌱</span>
           <span>开始修复</span>
         </button>
-        <p className={styles.footer}>v0.1 · 生态修复原型</p>
       </div>
     </div>
   );

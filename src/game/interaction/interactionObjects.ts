@@ -6,6 +6,14 @@
 
 import type { InteractionObjectConfig } from './interactionTypes';
 
+/** Phaser 纹理 key 常量 — 在 preload 中加载。 */
+export const SCENE_TEXTURE_KEYS = {
+  pollutionPileLarge: 'obj-pollution-pile-large',
+  restoredPlantsLarge: 'obj-restored-plants-large',
+  drainageFacilityDamaged: 'obj-drainage-facility-damaged',
+  environmentMonitorDevice: 'obj-environment-monitor-device',
+} as const;
+
 export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
   {
     id: 'interaction.pollution_zone_01',
@@ -18,6 +26,9 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     interactionRange: 80,
     feedbackMessage: '已检查污染区域，需要先向林工了解修复任务。',
     color: 0x8b4422,
+    textureKey: SCENE_TEXTURE_KEYS.pollutionPileLarge,
+    restoredTextureKey: SCENE_TEXTURE_KEYS.restoredPlantsLarge,
+    displayHeight: 100,
   },
   {
     id: 'interaction.monitoring_device_01',
@@ -30,6 +41,8 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     interactionRange: 80,
     feedbackMessage: '环境监测装置已启动，正式数据采集将在后续任务中实现。',
     color: 0x4a7a8a,
+    textureKey: SCENE_TEXTURE_KEYS.environmentMonitorDevice,
+    displayHeight: 72,
   },
   {
     id: 'interaction.drainage_facility_01',
@@ -42,6 +55,8 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     interactionRange: 80,
     feedbackMessage: '排水设施需要在小雨或暴雨时才能检查。',
     color: 0x3a6a7a,
+    textureKey: SCENE_TEXTURE_KEYS.drainageFacilityDamaged,
+    displayHeight: 80,
   },
   {
     id: 'interaction.storm_debris_01',

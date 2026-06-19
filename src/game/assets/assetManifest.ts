@@ -22,6 +22,35 @@ export const imageAssets = {
   },
 } as const;
 
+/**
+ * 主场景素材路径 — DEV-06 第二轮：真实美术图片素材。
+ *
+ * 包含背景、地面纹理、角色侧视图、交互物件图片和装饰层。
+ * 所有组件和 Phaser 场景从此统一引用，禁止分散硬编码路径。
+ */
+export const sceneAssets = {
+  backgrounds: {
+    industrialWasteland: '/assets/images/backgrounds/industrial-wasteland-bg.png',
+  },
+  tiles: {
+    crackedGround: '/assets/images/tiles/cracked-ground-tile.png',
+  },
+  characters: {
+    maleSide: '/assets/images/characters/repairer-male-side.png',
+    femaleSide: '/assets/images/characters/repairer-female-side.png',
+  },
+  objects: {
+    pollutionPileLarge: '/assets/images/objects/pollution-pile-large.png',
+    restoredPlantsLarge: '/assets/images/objects/restored-plants-large.png',
+    drainageFacilityDamaged: '/assets/images/objects/drainage-facility-damaged.png',
+    environmentMonitorDevice: '/assets/images/objects/environment-monitor-device.png',
+  },
+  decor: {
+    ruinPlantCluster: '/assets/images/decor/ruin-plant-cluster.png',
+    industrialRuinsStrip: '/assets/images/decor/industrial-ruins-strip.png',
+  },
+} as const;
+
 export const audioAssets = {
   bgm: {
     start: '/assets/audio/bgm/start-theme.mp3',

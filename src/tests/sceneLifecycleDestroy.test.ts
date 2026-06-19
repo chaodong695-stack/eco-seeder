@@ -48,6 +48,8 @@ vi.mock('phaser', () => {
     alpha = 1;
     scaleX = 1;
     scaleY = 1;
+    type = 'Rectangle';
+    depth = 0;
     destroyed = false;
     scene: MockScene | null;
 
@@ -115,6 +117,10 @@ vi.mock('phaser', () => {
         return rect;
       },
       text: (_x: number, _y: number, text: string) => new MockText(this, _x, _y, text),
+      image: () => new MockRectangle(this),
+    };
+    textures = {
+      exists: () => false,
     };
     sys = new MockSceneSystem();
     events = this;

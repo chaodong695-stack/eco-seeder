@@ -2,14 +2,24 @@ import Phaser from 'phaser';
 import { PLAYER_SIZE, PLAYER_SPEED } from '@/game/config/movementConfig';
 import { computeMovementVector, type MovementInput } from './movementVector';
 
+/** 玩家侧视图纹理 key — 在 Scene preload 中加载。 */
+export const PLAYER_TEXTURE_KEYS = {
+  male: 'player-male-side',
+  female: 'player-female-side',
+} as const;
+
+/** 玩家侧视图显示高度（像素）。 */
+const PLAYER_DISPLAY_HEIGHT = 110;
+
 /**
- * 玩家占位角色实体。
+ * 玩家角色实体。
  *
- * 封装玩家创建、物理体设置和移动逻辑，
- * 保持 Scene 文件简洁。
+ * 封装玩家创建、物理体设置和移动逻辑。
+ * 当侧视图纹理可用时使用 Image 渲染，否则回退到颜色矩形。
+ * 碰撞体始终使用原始矩形 body，不要求精确贴合图片轮廓。
  */
 export class Player {
-  readonly gameObject: Phaser.GameObjects.Rectangle;
+  readonly gameObject: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
   private readonly body: Phaser.Physics.Arcade.Body;
   private readonly label: Phaser.GameObjects.Text;
 
@@ -18,14 +28,26 @@ export class Player {
     x: number,
     y: number,
     label: string,
+    gender?: 'male' | 'female',
   ) {
-    this.gameObject = scene.add.rectangle(
-      x,
-      y,
-      PLAYER_SIZE.width,
-      PLAYER_SIZE.height,
-      0x27d7c4,
-    );
+    const texKey = gender ? PLAYER_TEXTURE_KEYS[gender] : null;
+
+    if (texKey && scene.textures.exists(texKey)) {
+      // 使用侧视图图片
+      this.gameObject = scene.add.image(x, y, texKey);
+      const img = this.gameObject as Phaser.GameObjects.Image;
+      this.scaleImageToHeight(img, PLAYER_DISPLAY_HEIGHT);
+      img.setOrigin(0.5, 0.5);
+    } else {
+      // 回退到颜色矩形
+      this.gameObject = scene.add.rectangle(
+        x,
+        y,
+        PLAYER_SIZE.width,
+        PLAYER_SIZE.height,
+        0x27d7c4,
+      );
+    }
 
     scene.physics.add.existing(this.gameObject);
     this.body = this.gameObject.body as Phaser.Physics.Arcade.Body;
@@ -39,6 +61,23 @@ export class Player {
       padding: { x: 4, y: 2 },
     });
     this.label.setOrigin(0.5);
+  }
+
+  /**
+   * 将 Image 缩放到指定显示高度，保持宽高比。
+   */
+  private scaleImageToHeight(
+    img: Phaser.GameObjects.Image,
+    targetHeight: number,
+  ): void {
+    const texture = img.texture;
+    if (texture && texture.source[0]) {
+      const sourceHeight = texture.source[0].height;
+      if (sourceHeight > 0) {
+        const scale = targetHeight / sourceHeight;
+        img.setScale(scale);
+      }
+    }
   }
 
   /**
