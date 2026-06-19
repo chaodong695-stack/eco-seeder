@@ -3,6 +3,10 @@
  *
  * 从 EnvironmentStore 读取环境数据，显示区域环境指标。
  * 完成修复后自动更新。
+ *
+ * DEV-06 第三轮修复：
+ * - 支持紧凑摘要模式（用于折叠 HUD 标题栏）；
+ * - 支持完整详情模式（用于折叠 HUD 展开内容）。
  */
 
 import { useEnvironmentStore } from '@/store/environmentStore';
@@ -59,5 +63,26 @@ export function EnvironmentStatusPanel() {
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * 环境状态紧凑摘要 — 用于折叠 HUD 标题栏。
+ */
+export function EnvironmentStatusSummary() {
+  const envState = useEnvironmentStore((s) => s.state);
+  const visualStage = useEnvironmentStore((s) => s.visualStage);
+
+  const stageLabel =
+    visualStage === 'polluted'
+      ? '污染状态'
+      : visualStage === 'recovering'
+        ? '修复中'
+        : '已恢复';
+
+  return (
+    <>
+      {stageLabel} · 修复 {envState.restorationProgress}%
+    </>
   );
 }

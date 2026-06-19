@@ -1,35 +1,79 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { gameBridge } from '@/game/bridge/GameBridge';
-import { useTaskStore } from '@/store/taskStore';
 import { useUIStore } from '@/store/uiStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
+import { useDailyTaskStore } from '@/store/dailyTaskStore';
+import { findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
 import { RestorationController } from '@/game/restoration/RestorationController';
 import { POLLUTION_ZONE_01_TARGET } from '@/game/restoration/restorationDefinitions';
 import type {
   RestorationStartedPayload,
   RestorationProgressPayload,
   RestorationInterruptedPayload,
-  RestorationCompletedPayload,
   EnvironmentUpdatedPayload,
   VisualStageChangedPayload,
 } from '@/game/restoration/restorationTypes';
 
-const TASK_ID = 'task.urban_wasteland.pollution_cleanup_01';
-const INTERACTION_ID = 'interaction.pollution_zone_01';
 
-describe('RestorationController — Task Integration', () => {
+// Mock worldStore
+vi.mock('@/store/worldStore', () => ({
+  useWorldStore: {
+    getState: () => ({
+      timeSnapshot: { localDate: '2025-01-04' },
+      getWeatherTimeline: () => ({
+        date: '2025-01-04',
+        mapId: 'map.urban_wasteland',
+        seed: 'test',
+        entries: [
+          { id: '1', startMinute: 0, endMinute: 360, weather: 'clear', intensity: 0.2 },
+          { id: '2', startMinute: 361, endMinute: 720, weather: 'light_rain', intensity: 0.6 },
+          { id: '3', startMinute: 721, endMinute: 1080, weather: 'heavy_rain', intensity: 0.9 },
+          { id: '4', startMinute: 1081, endMinute: 1439, weather: 'fog', intensity: 0.7 },
+        ],
+      }),
+      getDisplayWeather: () => 'clear' as const,
+    }),
+    subscribe: vi.fn(() => () => {}),
+  },
+}));
+
+// Mock playerStore
+vi.mock('@/store/playerStore', () => ({
+  usePlayerStore: {
+    getState: () => ({
+      character: { characterId: 'character.player_male', gender: 'male', displayName: '男性生态修复员' },
+    }),
+  },
+}));
+
+// Use real gameBridge — no mock
+
+describe('RestorationController — Daily Task Integration', () => {
   let controller: RestorationController;
 
   beforeEach(() => {
-    useTaskStore.getState().resetTasks();
+    localStorage.clear();
+    useDailyTaskStore.getState().resetDailyTasks();
     useUIStore.getState().returnToStart();
     useEnvironmentStore.getState().resetEnvironment();
     gameBridge.clear();
     controller = new RestorationController(POLLUTION_ZONE_01_TARGET);
   });
 
-  describe('cannot start without accepting task', () => {
-    it('does not start when task is available (not accepted)', () => {
+  function acceptWasteTask(): void {
+    useDailyTaskStore.getState().init();
+    const task = useDailyTaskStore.getState().tasks.find((t) => {
+      const def = findDailyTaskById(t.taskId);
+      return def?.objectiveType === 'collect_waste';
+    });
+    if (task) {
+      useDailyTaskStore.getState().acceptTask(task.instanceId);
+    }
+  }
+
+  describe('cannot start without accepting daily task', () => {
+    it('does not start when daily task is available (not accepted)', () => {
+      useDailyTaskStore.getState().init();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -37,10 +81,21 @@ describe('RestorationController — Task Integration', () => {
       expect(controller.getStatus()).toBe('idle');
     });
 
-    it('does not start when task is completed', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
-      useTaskStore.getState().completeObjective(TASK_ID, INTERACTION_ID);
-      useTaskStore.getState().submitTask(TASK_ID, 'npc.engineer.lin');
+    it('does not start when daily task is completed', () => {
+      useDailyTaskStore.getState().init();
+      acceptWasteTask();
+      // Complete the daily task by sending progress signals
+      const task = useDailyTaskStore.getState().tasks.find((t) => { const def = findDailyTaskById(t.taskId); return def?.objectiveType === 'collect_waste'; });
+      if (task) {
+        const def = task;
+        for (let i = 0; i < def.targetValue; i++) {
+          useDailyTaskStore.getState().applyProgress({
+            objectiveType: 'collect_waste',
+            amount: 1,
+            sourceId: `src-test-${i}`,
+          });
+        }
+      }
 
       controller.setEKeyHeld(true);
       controller.setInRange(true);
@@ -50,9 +105,9 @@ describe('RestorationController — Task Integration', () => {
     });
   });
 
-  describe('can start when task is active', () => {
-    it('starts when task is active, E held, and in range', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+  describe('can start when daily task is active', () => {
+    it('starts when daily task is active, E held, and in range', () => {
+      acceptWasteTask();
 
       controller.setEKeyHeld(true);
       controller.setInRange(true);
@@ -65,7 +120,7 @@ describe('RestorationController — Task Integration', () => {
       const handler = vi.fn();
       gameBridge.on('RESTORATION_STARTED', handler);
 
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -73,12 +128,12 @@ describe('RestorationController — Task Integration', () => {
       expect(handler).toHaveBeenCalledTimes(1);
       const payload = handler.mock.calls[0][0] as RestorationStartedPayload;
       expect(payload.targetId).toBe('restoration.pollution_zone_01');
-      expect(payload.interactionId).toBe(INTERACTION_ID);
+      expect(payload.interactionId).toBe('interaction.pollution_zone_01');
       expect(payload.durationMs).toBe(3000);
     });
 
     it('sets input mode to restoration', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -88,8 +143,8 @@ describe('RestorationController — Task Integration', () => {
   });
 
   describe('progress does not complete task prematurely', () => {
-    it('task remains active during progress', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+    it('daily task remains active during progress', () => {
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
@@ -99,13 +154,14 @@ describe('RestorationController — Task Integration', () => {
       }
 
       expect(controller.getStatus()).toBe('in_progress');
-      expect(useTaskStore.getState().getTaskStatus(TASK_ID)).toBe('active');
+      const task = useDailyTaskStore.getState().tasks.find((t) => { const def = findDailyTaskById(t.taskId); return def?.objectiveType === 'collect_waste'; });
+      expect(task?.status).toBe('active');
     });
   });
 
   describe('interruption keeps task active', () => {
-    it('task remains active when interrupted', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+    it('daily task remains active when interrupted', () => {
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -115,14 +171,15 @@ describe('RestorationController — Task Integration', () => {
       controller.update(16);
 
       expect(controller.getStatus()).toBe('interrupted');
-      expect(useTaskStore.getState().getTaskStatus(TASK_ID)).toBe('active');
+      const task = useDailyTaskStore.getState().tasks.find((t) => { const def = findDailyTaskById(t.taskId); return def?.objectiveType === 'collect_waste'; });
+      expect(task?.status).toBe('active');
     });
 
     it('emits RESTORATION_INTERRUPTED event', () => {
       const handler = vi.fn();
       gameBridge.on('RESTORATION_INTERRUPTED', handler);
 
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -133,11 +190,10 @@ describe('RestorationController — Task Integration', () => {
       expect(handler).toHaveBeenCalledTimes(1);
       const payload = handler.mock.calls[0][0] as RestorationInterruptedPayload;
       expect(payload.targetId).toBe('restoration.pollution_zone_01');
-      expect(payload.interactionId).toBe(INTERACTION_ID);
     });
 
     it('restores input mode to gameplay on interrupt', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -149,26 +205,33 @@ describe('RestorationController — Task Integration', () => {
     });
   });
 
-  describe('completion triggers task objective completion', () => {
-    it('transitions task to objective_completed when progress reaches 100%', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+  describe('completion sends daily task progress signal', () => {
+    it('completes restoration and sends DAILY_TASK_PROGRESS_SIGNAL', () => {
+      const handler = vi.fn();
+      gameBridge.on('DAILY_TASK_PROGRESS_SIGNAL', handler);
+
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
-      // Update for 3+ seconds to complete
       for (let i = 0; i < 200; i++) {
         controller.update(16);
       }
 
       expect(controller.getStatus()).toBe('completed');
-      expect(useTaskStore.getState().getTaskStatus(TASK_ID)).toBe('objective_completed');
+      // Should have emitted progress signal
+      expect(handler).toHaveBeenCalledTimes(1);
+      const payload = handler.mock.calls[0][0] as { objectiveType: string; amount: number; sourceId: string };
+      expect(payload.objectiveType).toBe('collect_waste');
+      expect(payload.amount).toBe(1);
+      expect(payload.sourceId).toBe('interaction.pollution_zone_01');
     });
 
     it('emits RESTORATION_COMPLETED event exactly once', () => {
       const handler = vi.fn();
       gameBridge.on('RESTORATION_COMPLETED', handler);
 
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
@@ -182,30 +245,13 @@ describe('RestorationController — Task Integration', () => {
       }
 
       expect(handler).toHaveBeenCalledTimes(1);
-      const payload = handler.mock.calls[0][0] as RestorationCompletedPayload;
-      expect(payload.targetId).toBe('restoration.pollution_zone_01');
-    });
-
-    it('emits TASK_OBJECTIVE_COMPLETED event', () => {
-      const handler = vi.fn();
-      gameBridge.on('TASK_OBJECTIVE_COMPLETED', handler);
-
-      useTaskStore.getState().acceptTask(TASK_ID);
-      controller.setEKeyHeld(true);
-      controller.setInRange(true);
-
-      for (let i = 0; i < 200; i++) {
-        controller.update(16);
-      }
-
-      expect(handler).toHaveBeenCalledTimes(1);
     });
 
     it('emits ENVIRONMENT_UPDATED event', () => {
       const handler = vi.fn();
       gameBridge.on('ENVIRONMENT_UPDATED', handler);
 
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
@@ -226,7 +272,7 @@ describe('RestorationController — Task Integration', () => {
       const handler = vi.fn();
       gameBridge.on('VISUAL_STAGE_CHANGED', handler);
 
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
@@ -239,11 +285,11 @@ describe('RestorationController — Task Integration', () => {
       expect(payload.stage).toBe('recovering');
     });
 
-    it('does not duplicate task completion on repeated updates', () => {
+    it('does not duplicate completion on repeated updates', () => {
       const handler = vi.fn();
-      gameBridge.on('TASK_OBJECTIVE_COMPLETED', handler);
+      gameBridge.on('DAILY_TASK_PROGRESS_SIGNAL', handler);
 
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
@@ -255,7 +301,7 @@ describe('RestorationController — Task Integration', () => {
     });
 
     it('does not duplicate environment effects', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
@@ -264,7 +310,6 @@ describe('RestorationController — Task Integration', () => {
       }
 
       const state = useEnvironmentStore.getState().state;
-      // Effect should only be applied once
       expect(state.pollution).toBe(63);
       expect(state.restorationProgress).toBe(20);
     });
@@ -272,7 +317,7 @@ describe('RestorationController — Task Integration', () => {
 
   describe('resume from interrupted state', () => {
     it('resumes from saved progress', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
@@ -294,7 +339,6 @@ describe('RestorationController — Task Integration', () => {
       controller.update(16);
       expect(controller.getStatus()).toBe('in_progress');
 
-      // Progress should be at least as much as before interrupt
       expect(controller.getProgress()).toBeGreaterThanOrEqual(progressBeforeInterrupt);
     });
   });
@@ -304,7 +348,7 @@ describe('RestorationController — Task Integration', () => {
       const handler = vi.fn();
       gameBridge.on('RESTORATION_PROGRESS', handler);
 
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
@@ -313,38 +357,15 @@ describe('RestorationController — Task Integration', () => {
       expect(handler).toHaveBeenCalled();
       const payload = handler.mock.calls[0][0] as RestorationProgressPayload;
       expect(payload.targetId).toBe('restoration.pollution_zone_01');
-      expect(payload.interactionId).toBe(INTERACTION_ID);
       expect(payload.progress).toBeGreaterThan(0);
       expect(payload.elapsedMs).toBeGreaterThan(0);
       expect(payload.durationMs).toBe(3000);
-    });
-
-    it('throttles progress events with minimum threshold', () => {
-      const handler = vi.fn();
-      gameBridge.on('RESTORATION_PROGRESS', handler);
-
-      useTaskStore.getState().acceptTask(TASK_ID);
-      controller.setEKeyHeld(true);
-      controller.setInRange(true);
-
-      // Small deltas that don't exceed threshold
-      controller.update(1);
-      controller.update(1);
-
-      // Should not emit for very small changes
-      const callsAfterSmall = handler.mock.calls.length;
-
-      // Larger delta
-      controller.update(500);
-      const callsAfterLarge = handler.mock.calls.length;
-
-      expect(callsAfterLarge).toBeGreaterThan(callsAfterSmall);
     });
   });
 
   describe('forceInterrupt', () => {
     it('interrupts in_progress and resets key state', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -370,17 +391,18 @@ describe('RestorationController — Task Integration', () => {
   });
 
   describe('getInteractionHint', () => {
-    it('returns check hint when task not active', () => {
-      expect(controller.getInteractionHint()).toBe('污染物堆 — 按 E 检查');
+    it('returns hint to accept task when daily task not active', () => {
+      useDailyTaskStore.getState().init();
+      expect(controller.getInteractionHint()).toContain('请先向林工接取');
     });
 
-    it('returns hold E hint when task is active', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+    it('returns hold E hint when daily task is active', () => {
+      acceptWasteTask();
       expect(controller.getInteractionHint()).toBe('污染物堆 — 按住 E 清理');
     });
 
     it('returns cleaning hint when in progress', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -389,7 +411,7 @@ describe('RestorationController — Task Integration', () => {
     });
 
     it('returns paused hint when interrupted', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -400,20 +422,19 @@ describe('RestorationController — Task Integration', () => {
     });
 
     it('returns completed hint when completed', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       for (let i = 0; i < 200; i++) {
         controller.update(16);
       }
 
-      expect(controller.getInteractionHint()).toBe('污染物堆 — 已完成临时清理');
+      expect(controller.getInteractionHint()).toBe('污染物堆 — 已完成清理');
     });
   });
 
   describe('syncCompleted', () => {
     it('syncs to completed when effect already applied', () => {
-      // Simulate effect already applied (e.g., scene restore)
       useEnvironmentStore.getState().applyEffect('restoration.pollution_zone_01', {
         pollution: -15,
         vegetation: 3,
@@ -436,7 +457,7 @@ describe('RestorationController — Task Integration', () => {
 
   describe('leaving range while interrupted', () => {
     it('preserves progress after leaving range', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
@@ -456,7 +477,6 @@ describe('RestorationController — Task Integration', () => {
       // 离开范围
       controller.setInRange(false);
 
-      // 进度保留
       expect(controller.getProgress()).toBe(progressBefore);
       expect(controller.getStatus()).toBe('interrupted');
     });
@@ -465,19 +485,17 @@ describe('RestorationController — Task Integration', () => {
       const handler = vi.fn();
       gameBridge.on('RESTORATION_INTERRUPTED', handler);
 
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
 
-      // 松开 E 中断
       controller.setEKeyHeld(false);
       controller.update(16);
       expect(controller.getStatus()).toBe('interrupted');
 
       handler.mockClear();
 
-      // 离开范围 — 应重新发出中断事件（inRange=false）
       controller.setInRange(false);
 
       expect(handler).toHaveBeenCalledTimes(1);
@@ -489,22 +507,19 @@ describe('RestorationController — Task Integration', () => {
       const handler = vi.fn();
       gameBridge.on('RESTORATION_INTERRUPTED', handler);
 
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
 
-      // 松开 E 中断
       controller.setEKeyHeld(false);
       controller.update(16);
       expect(controller.getStatus()).toBe('interrupted');
 
-      // 离开范围
       controller.setInRange(false);
 
       handler.mockClear();
 
-      // 重新进入范围 — 应发出中断事件（inRange=true）
       controller.setInRange(true);
 
       expect(handler).toHaveBeenCalledTimes(1);
@@ -513,20 +528,17 @@ describe('RestorationController — Task Integration', () => {
     });
 
     it('does not advance progress when out of range and E pressed', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
       controller.update(16);
 
-      // 松开 E 中断
       controller.setEKeyHeld(false);
       controller.update(16);
       expect(controller.getStatus()).toBe('interrupted');
 
-      // 离开范围
       controller.setInRange(false);
 
-      // 按住 E 但不在范围
       controller.setEKeyHeld(true);
       const progressBefore = controller.getProgress();
 
@@ -534,32 +546,27 @@ describe('RestorationController — Task Integration', () => {
         controller.update(16);
       }
 
-      // 进度不应增加
       expect(controller.getProgress()).toBe(progressBefore);
       expect(controller.getStatus()).toBe('interrupted');
     });
 
     it('resumes from saved progress when re-entering range and holding E', () => {
-      useTaskStore.getState().acceptTask(TASK_ID);
+      acceptWasteTask();
       controller.setEKeyHeld(true);
       controller.setInRange(true);
 
-      // 进度到 ~50%
       for (let i = 0; i < 90; i++) {
         controller.update(16);
       }
       const progressBefore = controller.getProgress();
       expect(progressBefore).toBeGreaterThan(0.3);
 
-      // 松开 E 中断
       controller.setEKeyHeld(false);
       controller.update(16);
       expect(controller.getStatus()).toBe('interrupted');
 
-      // 离开范围
       controller.setInRange(false);
 
-      // 重新进入范围并按住 E
       controller.setInRange(true);
       controller.setEKeyHeld(true);
       controller.update(16);

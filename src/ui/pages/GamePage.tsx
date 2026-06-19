@@ -2,17 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { GameInstance } from '@/game/bootstrap/GameInstance';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
-import { useTaskStore } from '@/store/taskStore';
-import { useEnvironmentStore } from '@/store/environmentStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GameHud } from '@/ui/components/GameHud';
 import { InteractionPrompt } from '@/ui/components/InteractionPrompt';
 import { TaskPanel } from '@/ui/components/TaskPanel';
 import { NpcDialog } from '@/ui/components/NpcDialog';
 import { SettingsPanel } from '@/ui/components/SettingsPanel';
-import { EnvironmentStatusPanel } from '@/ui/components/EnvironmentStatusPanel';
+import { EnvironmentStatusPanel, EnvironmentStatusSummary } from '@/ui/components/EnvironmentStatusPanel';
 import { RestorationProgress } from '@/ui/components/RestorationProgress';
 import { WorldStatus } from '@/ui/components/WorldStatus';
+import { DailyTaskPanel, DailyTaskSummary } from '@/ui/components/DailyTaskPanel';
+import { CollapsibleRightHud } from '@/ui/components/CollapsibleRightHud';
+import { DevDebugPanel } from '@/ui/components/DevDebugPanel';
+import { resetWorldSession } from '@/game/session/resetWorldSession';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -41,6 +43,7 @@ export function GamePage() {
       instance.mount(containerRef.current, character.gender);
       // 延迟设置就绪状态，等待 Phaser 初始化
       const timer = setTimeout(() => setIsReady(true), 300);
+
       return () => {
         clearTimeout(timer);
         instance.destroy();
@@ -58,8 +61,10 @@ export function GamePage() {
       gameInstanceRef.current = null;
     }
     setIsReady(false);
-    useTaskStore.getState().resetTasks();
-    useEnvironmentStore.getState().resetEnvironment();
+    // 重置所有世界状态 — 返回开始页视为结束当前局
+    // 重新选择角色进入时，resetWorldSession 会再次调用确保干净
+    // 但在此处调用可以防止 React 组件在卸载前读取旧状态
+    resetWorldSession();
     useSettingsStore.getState().resetSettings();
     returnToStart();
   };
@@ -88,12 +93,20 @@ export function GamePage() {
 
       {isReady && <GameHud onReturnToStart={handleReturnToStart} />}
       {isReady && <WorldStatus />}
+      {isReady && (
+        <CollapsibleRightHud
+          environmentSummary={<EnvironmentStatusSummary />}
+          environmentDetail={<EnvironmentStatusPanel />}
+          dailyTasksSummary={<DailyTaskSummary />}
+          dailyTasksDetail={<DailyTaskPanel />}
+        />
+      )}
       {isReady && <InteractionPrompt />}
-      {isReady && <EnvironmentStatusPanel />}
       {isReady && <RestorationProgress />}
       {isReady && isTaskPanelOpen && <TaskPanel />}
       {isReady && isNpcDialogOpen && <NpcDialog />}
       {isReady && isSettingsOpen && <SettingsPanel />}
+      {isReady && import.meta.env.DEV && <DevDebugPanel />}
     </div>
   );
 }

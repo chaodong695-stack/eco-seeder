@@ -8,7 +8,10 @@ export type InteractionType =
   | 'abandoned_equipment'
   | 'restoration_zone'
   | 'npc_placeholder'
-  | 'monitoring_device';
+  | 'monitoring_device'
+  | 'damaged_environment'
+  | 'ecology_patrol_point'
+  | 'fog_hazard_point';
 
 /** 交互对象配置 — 位置和交互范围不散落在业务代码中。 */
 export interface InteractionObjectConfig {

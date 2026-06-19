@@ -1,0 +1,113 @@
+.panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 420px;
+  max-height: 60%;
+  overflow-y: auto;
+  background: rgba(8, 23, 26, 0.95);
+  border: 1px solid var(--color-primary);
+  border-radius: 0 var(--radius-md) 0 0;
+  z-index: 200;
+  font-size: 11px;
+  color: var(--color-text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--color-panel);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--color-primary);
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+}
+
+.body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.section h4 {
+  margin: 0 0 4px 0;
+  font-size: 11px;
+  color: var(--color-primary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 2px;
+}
+
+.field {
+  display: flex;
+  gap: 4px;
+  line-height: 1.4;
+}
+
+.field span {
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.taskItem {
+  padding: 2px 0;
+  border-top: 1px dotted rgba(255, 255, 255, 0.05);
+}
+
+.jsonPre {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 4px 0 0 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.toggleBtn {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: rgba(8, 23, 26, 0.9);
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  font-size: 16px;
+  cursor: pointer;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.toggleBtn:hover {
+  background: var(--color-panel);
+  box-shadow: 0 0 8px rgba(39, 215, 196, 0.4);
+}

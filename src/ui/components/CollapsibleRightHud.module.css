@@ -1,0 +1,95 @@
+.container {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  pointer-events: none;
+  z-index: 15;
+  max-height: calc(100vh - 120px);
+}
+
+.container[data-small-screen] {
+  width: 200px;
+  max-width: 60vw;
+}
+
+.section {
+  pointer-events: auto;
+  background: var(--color-panel);
+  border: var(--border-width-normal) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.section.expanded {
+  max-height: calc(100vh - 160px);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  background: var(--color-panel-light);
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  font-weight: 600;
+  width: 100%;
+  text-align: left;
+}
+
+.sectionHeader:hover {
+  background: rgba(39, 215, 196, 0.08);
+}
+
+.sectionTitle {
+  flex-shrink: 0;
+}
+
+.summary {
+  flex: 1;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toggleIcon {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.sectionBody {
+  padding: var(--spacing-xs, 4px);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.collapseAllBtn {
+  pointer-events: auto;
+  align-self: flex-end;
+  margin-top: 2px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  background: var(--color-panel);
+  border: var(--border-width-normal) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.collapseAllBtn:hover {
+  color: var(--color-primary);
+}

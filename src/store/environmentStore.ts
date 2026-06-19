@@ -4,6 +4,10 @@
  * 环境数据的唯一事实来源。
  * React UI 和 Phaser 场景均通过此 Store 访问环境状态。
  * 不允许在 Scene 或组件中分别维护环境状态。
+ *
+ * DEV-06 第四轮修复：
+ * - 持久化到 localStorage，刷新页面后恢复修复进度；
+ * - 持久化 appliedTargetIds，防重复应用效果。
  */
 
 import { create } from 'zustand';
@@ -12,6 +16,9 @@ import type {
   RestorationVisualStage,
 } from '@/game/restoration/restorationTypes';
 import { clamp100 } from '@/game/restoration/restorationProgress';
+
+/** 持久化键。 */
+const ENVIRONMENT_STORAGE_KEY = 'eco-seeder.environment.v1';
 
 /** 环境状态指标。 */
 export interface EnvironmentState {
@@ -32,6 +39,12 @@ export const INITIAL_ENVIRONMENT_STATE: EnvironmentState = {
   waterQuality: 30,
   restorationProgress: 0,
 };
+
+/** 持久化数据结构。 */
+interface EnvironmentPersistData {
+  state: EnvironmentState;
+  appliedTargetIds: string[];
+}
 
 interface EnvironmentStoreState {
   /** 环境状态指标。 */
@@ -69,10 +82,78 @@ export function resolveVisualStage(
   return 'polluted';
 }
 
+/**
+ * 持久化环境状态到 localStorage。
+ */
+function persistEnvironment(
+  state: EnvironmentState,
+  appliedTargetIds: Set<string>,
+): void {
+  try {
+    const data: EnvironmentPersistData = {
+      state,
+      appliedTargetIds: Array.from(appliedTargetIds),
+    };
+    localStorage.setItem(ENVIRONMENT_STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // 静默处理
+  }
+}
+
+/**
+ * 从 localStorage 加载环境状态。
+ */
+function loadEnvironment(): EnvironmentPersistData | null {
+  try {
+    const raw = localStorage.getItem(ENVIRONMENT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed?.state?.pollution !== 'number' ||
+      typeof parsed?.state?.vegetation !== 'number' ||
+      typeof parsed?.state?.waterQuality !== 'number' ||
+      typeof parsed?.state?.restorationProgress !== 'number' ||
+      !Array.isArray(parsed?.appliedTargetIds)
+    ) {
+      return null;
+    }
+    return parsed as EnvironmentPersistData;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 清除 localStorage 中的环境状态。
+ */
+function clearEnvironment(): void {
+  try {
+    localStorage.removeItem(ENVIRONMENT_STORAGE_KEY);
+  } catch {
+    // 静默处理
+  }
+}
+
+// 初始化时尝试从 localStorage 恢复
+function getInitialState(): EnvironmentState {
+  const persisted = loadEnvironment();
+  if (persisted) return persisted.state;
+  return { ...INITIAL_ENVIRONMENT_STATE };
+}
+
+function getInitialAppliedTargetIds(): Set<string> {
+  const persisted = loadEnvironment();
+  if (persisted) return new Set(persisted.appliedTargetIds);
+  return new Set<string>();
+}
+
+const initialState = getInitialState();
+const initialAppliedIds = getInitialAppliedTargetIds();
+
 export const useEnvironmentStore = create<EnvironmentStoreState>((set, get) => ({
-  state: { ...INITIAL_ENVIRONMENT_STATE },
-  appliedTargetIds: new Set<string>(),
-  visualStage: 'polluted',
+  state: initialState,
+  appliedTargetIds: initialAppliedIds,
+  visualStage: resolveVisualStage(initialState),
 
   applyEffect: (targetId: string, effect: EnvironmentEffect): boolean => {
     const current = get();
@@ -101,6 +182,9 @@ export const useEnvironmentStore = create<EnvironmentStoreState>((set, get) => (
       visualStage: newStage,
     });
 
+    // 持久化
+    persistEnvironment(newState, newApplied);
+
     return true;
   },
 
@@ -113,6 +197,7 @@ export const useEnvironmentStore = create<EnvironmentStoreState>((set, get) => (
   },
 
   resetEnvironment: (): void => {
+    clearEnvironment();
     set({
       state: { ...INITIAL_ENVIRONMENT_STATE },
       appliedTargetIds: new Set<string>(),

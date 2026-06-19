@@ -19,6 +19,17 @@ export const NPC_DEFINITIONS: NpcDefinition[] = [
     interactionRange: 80,
     color: 0xf5b942,
   },
+  {
+    id: 'npc_weather_ranger',
+    displayName: '巡查员',
+    role: '环境巡查员',
+    x: 1700,
+    y: 300,
+    width: 32,
+    height: 48,
+    interactionRange: 80,
+    color: 0x4a9eff,
+  },
 ];
 
 /**

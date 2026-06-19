@@ -22,12 +22,16 @@ import {
   clamp01,
 } from './restorationProgress';
 import { gameBridge } from '../bridge/GameBridge';
-import { useTaskStore } from '@/store/taskStore';
+import { useDailyTaskStore } from '@/store/dailyTaskStore';
+import { findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
 import { useUIStore } from '@/store/uiStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
 
 /** 进度事件最小变化阈值（避免每帧大量 React 重渲染）。 */
 const PROGRESS_EMIT_THRESHOLD = 0.01;
+
+/** 每日任务目标类型 — 污染物堆清理对应的目标类型。 */
+const WASTE_OBJECTIVE_TYPE = 'collect_waste';
 
 export class RestorationController {
   private readonly target: RestorationTargetDefinition;
@@ -100,7 +104,7 @@ export class RestorationController {
    * 判断当前是否可以启动修复。
    *
    * 条件：
-   * - 任务状态为 active；
+   * - 每日任务 "清理散落垃圾" 处于 active 状态；
    * - 修复状态为 idle 或 interrupted；
    * - E 键按住；
    * - 玩家在范围内；
@@ -110,8 +114,13 @@ export class RestorationController {
     if (this.status === 'completed') return false;
     if (this.status === 'in_progress') return false;
 
-    const taskStatus = useTaskStore.getState().getTaskStatus(this.target.taskId);
-    if (taskStatus !== 'active') return false;
+    // 检查每日任务状态 — 必须已接取且 active
+    // 通过 objectiveType 查找对应的每日任务
+    const dailyTask = useDailyTaskStore.getState().tasks.find((t) => {
+      const def = findDailyTaskById(t.taskId);
+      return def?.objectiveType === WASTE_OBJECTIVE_TYPE;
+    });
+    if (!dailyTask || dailyTask.status !== 'active') return false;
 
     const inputMode = useUIStore.getState().inputMode;
     if (inputMode !== 'gameplay') return false;
@@ -182,9 +191,12 @@ export class RestorationController {
     if (currentMode !== 'gameplay' && currentMode !== 'restoration') return true;
     // 如果输入模式是 gameplay 但我们在 restoration 中，说明被外部重置了
     if (currentMode === 'gameplay' && this.status === 'in_progress') return true;
-    // 任务不再是 active
-    const taskStatus = useTaskStore.getState().getTaskStatus(this.target.taskId);
-    if (taskStatus !== 'active') return true;
+    // 每日任务不再是 active
+    const dailyTask = useDailyTaskStore.getState().tasks.find((t) => {
+      const def = findDailyTaskById(t.taskId);
+      return def?.objectiveType === WASTE_OBJECTIVE_TYPE;
+    });
+    if (!dailyTask || dailyTask.status !== 'active') return true;
     return false;
   }
 
@@ -231,6 +243,8 @@ export class RestorationController {
 
   /**
    * 完成修复 — 只触发一次。
+   *
+   * 完成后发送每日任务进度信号，不再修改旧 taskStore。
    */
   private complete(): void {
     if (this.status !== 'in_progress') return;
@@ -268,19 +282,13 @@ export class RestorationController {
       }
     }
 
-    // 完成任务目标（只调用一次）
-    const taskStore = useTaskStore.getState();
-    const success = taskStore.completeObjective(
-      this.target.taskId,
-      this.target.interactionId,
-    );
-
-    if (success) {
-      gameBridge.emit('TASK_OBJECTIVE_COMPLETED', {
-        taskId: this.target.taskId,
-        interactionId: this.target.interactionId,
-      });
-    }
+    // 发送每日任务进度信号 — 污染物堆清理推进"清理散落垃圾"任务
+    // 使用交互对象 ID 作为 sourceId，确保同一污染物堆只贡献一次
+    gameBridge.emit('DAILY_TASK_PROGRESS_SIGNAL', {
+      objectiveType: 'collect_waste',
+      amount: 1,
+      sourceId: this.target.interactionId,
+    });
 
     gameBridge.emit('RESTORATION_COMPLETED', {
       targetId: this.target.id,
@@ -289,7 +297,7 @@ export class RestorationController {
     });
 
     gameBridge.emit('TASK_FEEDBACK', {
-      message: '污染物堆已完成临时清理，请返回林工处报告。',
+      message: '污染物堆已完成清理。',
     });
   }
 
@@ -365,26 +373,29 @@ export class RestorationController {
    * 获取当前交互提示文本。
    */
   getInteractionHint(): string {
-    const taskStatus = useTaskStore.getState().getTaskStatus(this.target.taskId);
-
     if (this.status === 'in_progress') {
       return '正在清理污染物堆';
     }
 
     if (this.status === 'completed') {
-      return '污染物堆 — 已完成临时清理';
+      return '污染物堆 — 已完成清理';
     }
 
     if (this.status === 'interrupted') {
       return '清理已暂停 — 按住 E 继续';
     }
 
-    // idle 状态
-    if (taskStatus === 'active') {
+    // idle 状态 — 检查每日任务状态
+    const dailyTask = useDailyTaskStore.getState().tasks.find((t) => {
+      const def = findDailyTaskById(t.taskId);
+      return def?.objectiveType === WASTE_OBJECTIVE_TYPE;
+    });
+
+    if (dailyTask?.status === 'active') {
       return '污染物堆 — 按住 E 清理';
     }
 
-    // 未接取任务
-    return '污染物堆 — 按 E 检查';
+    // 未接取每日任务
+    return '污染物堆 — 请先向林工接取今日清理任务';
   }
 }

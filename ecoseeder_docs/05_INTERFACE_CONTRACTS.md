@@ -735,10 +735,320 @@ interface GameBridgeEvents {
   DAY_PHASE_CHANGED: { previousPhase: DayPhase | null; currentPhase: DayPhase; mode: TimeMode; localMinutes: number };
   WEATHER_TIMELINE_GENERATED: { timeline: WeatherTimeline };
   WEATHER_CHANGED_V2: { previousWeather: string | null; current: WeatherSnapshot };
+  // DEV-06 新增
+  DAILY_TASKS_GENERATED: { tasks: DailyTaskInstance[] };
+  DAILY_TASK_STATUS_CHANGED: { instanceId: string; taskId: string; previousStatus: string; currentStatus: string };
+  DAILY_TASK_PROGRESS_CHANGED: { instanceId: string; taskId: string; progress: number; targetValue: number };
+  DAILY_TASK_COMPLETED: { instanceId: string; taskId: string };
+  DAILY_TASK_PROGRESS_SIGNAL: { objectiveType: string; amount: number; sourceId?: string };
 }
 ```
 
 所有事件必须有类型，不发送无结构字符串或任意对象。
+
+### 13.1 DEV-06 每日任务事件说明
+
+- `DAILY_TASKS_GENERATED`：每日任务生成时发出，携带全部任务实例。
+- `DAILY_TASK_STATUS_CHANGED`：任务状态变化时发出（available → active → waiting_condition ↔ active → completed）。
+- `DAILY_TASK_PROGRESS_CHANGED`：任务进度增加时发出。
+- `DAILY_TASK_COMPLETED`：任务进度达到目标值时发出，仅触发一次。
+- `DAILY_TASK_PROGRESS_SIGNAL`：由 Phaser Scene 发出的游戏语义进度信号，由 dailyTaskStore 消费。
+
+事件要求：
+- 支持取消订阅（`on()` 返回取消函数）；
+- Scene shutdown 时注销监听；
+- 相同状态不重复发出事件；
+- React HUD 和 Phaser Scene 不绕过事件或 Store 直接互相调用。
+
+---
+
+## 15. 每日任务接口（DEV-06 实现）
+
+### 15.1 每日任务数据模型
+
+```ts
+type DailyTaskStatus =
+  | 'available'
+  | 'active'
+  | 'waiting_condition'
+  | 'completed';
+
+interface DailyTaskCondition {
+  supportedWeather?: WeatherType[];
+}
+
+interface DailyTaskReward {
+  restorationValue?: number;
+}
+
+interface DailyTaskDefinition {
+  id: string;
+  version: number;
+  title: string;
+  description: string;
+  npcId: string;
+  objectiveType: string;
+  targetValue: number;
+  condition?: DailyTaskCondition;
+  weight: number;
+  reward?: DailyTaskReward;
+}
+
+interface DailyTaskInstance {
+  instanceId: string;
+  taskId: string;
+  localDate: string;
+  mapId: string;
+  status: DailyTaskStatus;
+  progress: number;
+  targetValue: number;
+  rewardClaimed: boolean;
+}
+
+interface TaskProgressSignal {
+  objectiveType: string;
+  amount: number;
+  sourceId?: string;
+}
+```
+
+### 15.2 任务状态机
+
+```text
+available → active → completed
+              ↕
+      waiting_condition
+```
+
+- `available`：可以接取。
+- `active`：已接取且当前天气条件满足。
+- `waiting_condition`：已接取，但当前天气条件不满足。
+- `completed`：目标已完成，奖励已发放。
+
+状态流转规则：
+- `available` → `active`：玩家接取任务。
+- `active` → `waiting_condition`：天气条件不再满足。
+- `waiting_condition` → `active`：天气条件恢复满足。
+- `active` → `completed`：进度达到目标值。
+- `completed` 为终态，不可回退。
+
+### 15.3 确定性生成规则
+
+生成种子：
+```text
+anonymousPlayerId:selectedCharacterId:localDate:mapId:dailyTaskPoolVersion
+```
+
+使用 mulberry32 伪随机数生成器，相同种子生成相同任务列表。
+不使用 `Math.random()`。
+
+角色独立存档：种子中包含 `selectedCharacterId`，切换角色后生成不同任务列表。
+
+生成约束：
+- 每日生成 3 个不重复任务；
+- 至少包含 1 个无天气限制任务；
+- 最多包含 2 个严格天气条件任务；
+- 天气条件任务只有在当日天气时间线中至少出现一次对应天气时才可生成；
+- 天气任务不足时用普通任务补位。
+
+唯一性保障：
+- `dailyTaskGenerator` 使用无放回抽样（Fisher-Yates），确保同一任务定义不会被多次选中；
+- 生成后调用 `validateTaskUniqueness` 校验 taskId 和 instanceId 均唯一；
+- `instanceId` 由种子和 taskId 确定性生成（`{taskId}:{hash(seed:taskId)}`），保证稳定且唯一；
+- `dailyTaskStore` 加载持久化数据时通过 `deduplicatePersistedTasks` 拒绝重复 taskId 或 instanceId；
+- 已存储的重复任务数据自动失效并重新生成。
+
+### 15.4 天气条件规则
+
+- 无天气限制的任务在任意天气下均可执行。
+- 有天气条件的任务区分“当日是否可能出现该天气”与“当前天气是否满足执行条件”。
+  - 当日天气时间线中出现对应天气 → 允许生成该任务。
+  - 当前天气满足条件 → 任务可执行（`active`）。
+  - 当前天气不满足 → 任务显示“等待天气”（`waiting_condition`），不删除或替换。
+
+三层天气门控：
+
+1. **场景层（VisualController）**：非 `heavy_rain` 时隐藏暴雨垃圾对象；非 `fog` 时隐藏雾天危险点；
+2. **交互层（InteractionZone）**：非 `heavy_rain` 时禁用暴雨垃圾交互；非 `light_rain`/`heavy_rain` 时不显示排水设施交互提示；非 `fog` 时不显示雾天危险点交互提示；
+3. **Store 层（dailyTaskStore.applyProgress）**：处理 `PROGRESS_SIGNAL` 时再次校验当前天气，天气条件不满足时不计进度。
+
+正确规则：
+- 暴雨垃圾仅在 `heavy_rain` 下可见和可交互；
+- 排水设施仅在 `light_rain` 或 `heavy_rain` 下可计入任务进度；
+- 雾天危险点仅在 `fog` 下可见和可交互；
+- 条件不满足时不得显示可交互提示，不得增加进度；
+- 天气回来切换不得重复创建对象或重复累计 sourceId。
+
+### 15.5 持久化结构
+
+存储键：`eco-seeder.daily-tasks.v1`
+
+```ts
+interface DailyTaskPersistData {
+  date: string;
+  mapId: string;
+  poolVersion: string;
+  selectedCharacterId: string;
+  tasks: DailyTaskInstance[];
+  contributedSources: string[];
+  restorationProgress: number;
+}
+```
+
+使用 Zod 校验，数据损坏时安全回退并重新生成。
+localStorage 只是持久化介质，不是运行时事实来源。
+
+DEV-06 第四轮修复新增持久化字段：
+- `selectedCharacterId`：角色独立存档，切换角色后旧数据自动失效；
+- `contributedSources`：已消费的 sourceId 集合，刷新页面后防重复；
+- `restorationProgress`：区域修复进度，保证任务完成与区域修复进度一致。
+
+环境状态持久化：`eco-seeder.environment.v1`
+```ts
+interface EnvironmentPersistData {
+  state: EnvironmentState;
+  appliedTargetIds: string[];
+}
+```
+
+加载时去重：
+- `dailyTaskStore.init()` 加载持久化数据时调用 `deduplicatePersistedTasks`；
+- 如果存在重复 taskId 或 instanceId，只保留第一个出现的实例；
+- 如果去重后任务数量不足或检测到重复，自动重新生成当日任务。
+- `isPersistDataValid` 检查 date、mapId、poolVersion 和 selectedCharacterId 四个维度。
+
+### 15.6 第二 NPC 定义
+
+```ts
+interface NpcDefinition {
+  id: string;
+  displayName: string;
+  role: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  interactionRange: number;
+  color: number;
+}
+```
+
+第二 NPC：`npc_weather_ranger`（环境巡查员），负责天气巡查、排水设施检查、暴雨垃圾扩散和雾天风险任务。
+
+NPC 碰撞策略：
+- `npc.engineer.lin`（林工）保留实体碰撞（`collider`），不位于主要通行路线；
+- `npc_weather_ranger`（巡查员）使用非阻挡型触发器（`overlap`），玩家可以穿过，不阻挡通路。
+
+NPC 任务接取：
+- `dailyTaskStore.acceptTask(instanceId)` 提供统一的接取接口；
+- 所属 NPC 对话框列出其负责的可接取任务；
+- 提供明确的接取操作（接取按钮）；
+- 接取后更新 Store、持久化和 NPC 指示符；
+- 发出一次 `DAILY_TASK_STATUS_CHANGED` 事件；
+- 已接取和已完成任务不可重复接取。
+
+NPC 指示符：
+- `!`：有可接取任务；
+- `…`：任务进行中（`active`）；
+- `⏳`：等待天气（`waiting_condition`）；
+- `✓`：今日任务已完成。
+
+### 15.7 生命周期和清理
+
+- Scene `create()` 中初始化每日任务 Store（幂等）。
+- Scene `SHUTDOWN`/`DESTROY` 时注销所有 GameBridge 监听。
+- NPC 在 `create()` 中创建，`handleSceneCleanup()` 中销毁，不重复创建。
+- 返回开始页不清空当日任务和环境修复进度，重新进入后恢复。
+- 日期变化后自动生成新一日任务。
+
+角色切换策略（策略 A：角色独立存档）：
+- 切换角色时清除每日任务持久化数据；
+- 重置环境状态（包括 environmentStore 的 localStorage）；
+- 重置 dailyTaskStore 状态（isInitialized=false）；
+- 场景重建后 init() 使用新的 selectedCharacterId 生成新任务；
+- 旧角色的任务进度和区域修复状态不再保留。
+
+任务完成与区域修复一致性：
+- 任务完成时通过 `applyTaskReward` 将 `reward.restorationValue` 应用到 `environmentStore`；
+- 奖励最多发放一次（由 `rewardClaimed` 标志和 `appliedTargetIds` 共同保证）；
+- `restorationProgress` 随每日任务一起持久化，刷新后保持一致。
+
+### 15.8 UI 布局
+
+右侧采用可折叠 HUD 抽屉（`CollapsibleRightHud`），替代原来双面板常驻布局：
+
+```text
+右上角常驻紧凑状态栏
+
+[区域状态  修复中 ▼]
+[每日任务  0/3 ▼]
+```
+
+点击后展开对应内容：
+
+```text
+区域状态 ▼
+├─ 污染程度
+├─ 植被状况
+├─ 水质状态
+└─ 修复进度
+
+每日任务 ▼
+├─ 任务一
+├─ 任务二
+└─ 任务三
+```
+
+交互要求：
+1. 默认仅显示紧凑标题和关键摘要；
+2. 点击标题展开或收起；
+3. 只允许一个面板同时展开；
+4. 展开高度不得超过可视区域；
+5. 内容过多时仅面板内部滚动；
+6. 不得遮挡底部主要按钮；
+7. 小尺寸窗口下默认折叠；
+8. 面板展开时不能阻断键盘移动。
+
+### 15.9 任务入口统一
+
+三处任务 UI 职责清晰：
+
+- **右侧每日任务**（`DailyTaskPanel`）：紧凑进度摘要，折叠后仅显示计数；
+- **底部任务按钮**（`TaskPanel`）：完整任务详情，显示标题、描述、进度、目标值、来源 NPC、天气条件、当前状态、完成方式提示；
+- **NPC 对话**（`NpcDialog`）：接取 NPC 所属任务。
+
+三处必须读取同一个 `dailyTaskStore`，不得各自维护任务副本。
+旧任务 Store（`taskStore`）不再影响 DailyTaskPanel 和 TaskPanel。
+
+进行中任务 = `status === "active" || status === "waiting_condition"`
+
+### 15.10 开发调试面板
+
+仅 `import.meta.env.DEV` 为 true 时渲染 `DevDebugPanel`，生产环境不渲染。
+
+显示内容：
+- 当前 `dailyTaskStore` 状态（tasks、isInitialized、contributedSources）；
+- 当前 `worldStore` 日期和天气；
+- 当前选中角色 ID；
+- 当前区域状态（restorationProgress、pollution、visualStage、appliedTargetIds）；
+- localStorage 中的每日任务 payload（含 contributedSources、restorationProgress）；
+- 当前任务存储 key；
+- 当前任务生成种子。
+
+### 15.11 任务目标映射
+
+每个进入正式生成池的每日任务都必须有对应的场景交互对象：
+
+| 任务 ID                    | objectiveType       | 场景对象         | 天气条件  | 目标值 |
+| ------------------------ | ------------------- | ------------ | ----- | --- |
+| daily_collect_waste      | collect_waste       | 污染物堆        | 无     | 1   |
+| daily_restore_area       | restore_area        | 受损环境点       | 无     | 2   |
+| daily_drainage_check     | inspect_drainage    | 排水设施        | 小雨、暴雨 | 1   |
+| daily_storm_waste        | collect_storm_waste | 暴雨冲散垃圾     | 暴雨    | 1   |
+| daily_ecology_patrol     | ecology_patrol      | 生态巡查点       | 晴朗、阴天 | 3   |
+| daily_fog_hazard_marking | fog_hazard_marking  | 雾天危险点       | 雾     | 2   |
+
+映射表定义在 `TASK_OBJECTIVE_SOURCE_MAP`，所有任务定义通过 `getCompletableTaskDefinitions()` 过滤后才能进入任务生成池。
 
 ---
 
