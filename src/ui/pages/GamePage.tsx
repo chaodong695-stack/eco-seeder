@@ -14,6 +14,7 @@ import { WorldStatus } from '@/ui/components/WorldStatus';
 import { DailyTaskPanel, DailyTaskSummary } from '@/ui/components/DailyTaskPanel';
 import { CollapsibleRightHud } from '@/ui/components/CollapsibleRightHud';
 import { DevDebugPanel } from '@/ui/components/DevDebugPanel';
+import { resetWorldSession } from '@/game/session/resetWorldSession';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -60,7 +61,10 @@ export function GamePage() {
       gameInstanceRef.current = null;
     }
     setIsReady(false);
-    // 每日任务和环境状态不重置 — 返回开始页后不清空当日任务和修复进度
+    // 重置所有世界状态 — 返回开始页视为结束当前局
+    // 重新选择角色进入时，resetWorldSession 会再次调用确保干净
+    // 但在此处调用可以防止 React 组件在卸载前读取旧状态
+    resetWorldSession();
     useSettingsStore.getState().resetSettings();
     returnToStart();
   };

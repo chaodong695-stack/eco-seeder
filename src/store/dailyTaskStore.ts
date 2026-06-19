@@ -10,8 +10,12 @@
  * DEV-06 第四轮修复：
  * - 持久化 contributedSources，刷新后防重复 sourceId；
  * - 任务完成时应用 reward.restorationValue 到 environmentStore；
- * - 持久化 restorationProgress，保证任务完成与区域修复进度一致；
- * - 切换角色（selectedCharacterId 变化）时重置任务和区域状态。
+ * - 持久化 restorationProgress，保证任务完成与区域修复进度一致。
+ *
+ * DEV-06 第五轮修复：
+ * - 移除 onCharacterChange，统一由 resetWorldSession() 重置所有世界状态；
+ * - 新一局（返回开始页 / 刷新页面 / 切换角色）时调用 resetWorldSession；
+ * - resetDailyTasks 不再重置 environmentStore（由 resetWorldSession 统一处理）。
  */
 
 import { create } from 'zustand';
@@ -70,10 +74,8 @@ interface DailyTaskStoreState {
   getTasksByNpcId: (npcId: string) => DailyTaskInstance[];
   /** 获取所有任务（含定义信息）。 */
   getAllTasks: () => DailyTaskInstance[];
-  /** 重置（返回开始页或切换角色时调用）。 */
+  /** 重置（返回开始页、切换角色或新一局时调用）。 */
   resetDailyTasks: () => void;
-  /** 切换角色时重置任务和区域状态。 */
-  onCharacterChange: () => void;
 }
 
 /**
@@ -397,22 +399,6 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
 
   resetDailyTasks: () => {
     clearDailyTasks();
-    set({
-      tasks: [],
-      localDate: '',
-      selectedCharacterId: '',
-      isInitialized: false,
-      contributedSources: new Set<string>(),
-    });
-  },
-
-  onCharacterChange: () => {
-    // 策略 A：切换角色等于新角色存档
-    // 清除每日任务持久化数据
-    clearDailyTasks();
-    // 重置环境状态（包括 environmentStore 的 localStorage）
-    useEnvironmentStore.getState().resetEnvironment();
-    // 重置 store 状态 — 不立即 init，等待 Scene create() 时调用
     set({
       tasks: [],
       localDate: '',

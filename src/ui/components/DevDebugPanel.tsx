@@ -10,6 +10,8 @@ import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { useWorldStore } from '@/store/worldStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
+import { useTaskStore } from '@/store/taskStore';
+import { resetWorldSession } from '@/game/session/resetWorldSession';
 import {
   loadDailyTasks,
   DAILY_TASKS_STORAGE_KEY,
@@ -188,6 +190,24 @@ export function DevDebugPanel() {
           <div className={styles.field}>
             <span>seed:</span> {seed}
           </div>
+        </section>
+
+        <section className={styles.section}>
+          <h4>旧任务 Store</h4>
+          <div className={styles.field}>
+            <span>任务数:</span> {Object.keys(useTaskStore.getState().tasks).length}
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <h4>开发操作</h4>
+          <button
+            className={styles.closeBtn}
+            onClick={() => resetWorldSession()}
+            title="重置所有世界状态（每日任务、区域修复、旧任务）"
+          >
+            🔧 手动 resetWorldSession
+          </button>
         </section>
       </div>
     </div>

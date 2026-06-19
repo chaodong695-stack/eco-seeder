@@ -17,6 +17,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
+import { resetWorldSession } from '@/game/session/resetWorldSession';
 import {
   DAILY_TASKS_STORAGE_KEY,
   loadDailyTasks,
@@ -249,14 +250,14 @@ describe('DEV-06 Round 4: Persistence, character switch, reward consistency', ()
     expect(useDailyTaskStore.getState().tasks).toHaveLength(3);
     expect(useDailyTaskStore.getState().isInitialized).toBe(true);
 
-    // Simulate character switch
+    // Simulate character switch — now uses resetWorldSession
     mockCharacter = {
       characterId: 'character.player_female',
       gender: 'female',
       displayName: '女性生态修复员',
     };
 
-    useDailyTaskStore.getState().onCharacterChange();
+    resetWorldSession();
 
     // Store should be reset
     expect(useDailyTaskStore.getState().isInitialized).toBe(false);
@@ -279,8 +280,8 @@ describe('DEV-06 Round 4: Persistence, character switch, reward consistency', ()
     });
     expect(useEnvironmentStore.getState().state.restorationProgress).toBe(15);
 
-    // Simulate character switch
-    useDailyTaskStore.getState().onCharacterChange();
+    // Simulate character switch — now uses resetWorldSession
+    resetWorldSession();
 
     // Environment should be reset
     expect(useEnvironmentStore.getState().state.restorationProgress).toBe(0);
@@ -387,13 +388,13 @@ describe('DEV-06 Round 4: Persistence, character switch, reward consistency', ()
     // Init with male character
     useDailyTaskStore.getState().init();
 
-    // Switch to female character
+    // Switch to female character — now uses resetWorldSession
     mockCharacter = {
       characterId: 'character.player_female',
       gender: 'female',
       displayName: '女性生态修复员',
     };
-    useDailyTaskStore.getState().onCharacterChange();
+    resetWorldSession();
     useDailyTaskStore.getState().init();
 
     // Task IDs should likely differ (different seed)
