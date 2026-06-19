@@ -264,14 +264,17 @@ export class UrbanWastelandScene extends Phaser.Scene {
     }
 
     // ── 第 2 层：地面 / 平台纹理 ──
+    // 使用 tileSprite 平铺地面纹理，确保只占据 GROUND_VISUAL_HEIGHT 高度，不覆盖全屏
     if (this.textures.exists(GROUND_TILE_TEXTURE)) {
-      // 用 tile 纹理覆盖底部地面条，仅用于地面区域
-      const groundImg = this.add.image(W / 2, GROUND_TOP_Y + GROUND_VISUAL_HEIGHT / 2, GROUND_TILE_TEXTURE);
-      // 缩放覆盖地面区域（宽度撑满，高度覆盖 GROUND_VISUAL_HEIGHT）
-      const groundScale = Math.max(W / groundImg.width, GROUND_VISUAL_HEIGHT / groundImg.height);
-      groundImg.setScale(groundScale);
-      groundImg.setDepth(DEPTH.ground);
-      this.midgroundLayer.add(groundImg);
+      const groundTile = this.add.tileSprite(
+        W / 2,
+        GROUND_TOP_Y + GROUND_VISUAL_HEIGHT / 2,
+        W,
+        GROUND_VISUAL_HEIGHT,
+        GROUND_TILE_TEXTURE,
+      );
+      groundTile.setDepth(DEPTH.ground);
+      this.midgroundLayer.add(groundTile);
     } else {
       const ground = this.add.rectangle(W / 2, GROUND_TOP_Y + GROUND_VISUAL_HEIGHT / 2, W, GROUND_VISUAL_HEIGHT, 0x2a3535);
       ground.setDepth(DEPTH.ground);
