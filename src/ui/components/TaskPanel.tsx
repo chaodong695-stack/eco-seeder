@@ -128,9 +128,15 @@ export function TaskPanel() {
                           : styles.statusActive
                     }`}
                   >
+                    {task.status === 'completed' && '✓ '}
+                    {task.status === 'waiting_condition' && '⏳ '}
+                    {task.status === 'active' && '▶ '}
                     {STATUS_TEXT[task.status]}
                   </span>
                 </div>
+                {task.status === 'completed' ? (
+                  <div className={styles.taskCompletedBar} />
+                ) : null}
                 <div className={styles.taskDesc}>{task.description}</div>
                 <div className={styles.taskMeta}>
                   <span className={styles.metaItem}>

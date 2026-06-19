@@ -21,10 +21,36 @@
   );
 }
 
-.mapName {
-  font-size: var(--font-size-md);
+.topLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.charInfo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.charIcon {
+  font-size: 16px;
+}
+
+.charName {
+  font-size: var(--font-size-sm);
   color: var(--color-primary);
   font-weight: 600;
+}
+
+.divider {
+  color: var(--color-border);
+  font-size: 14px;
+}
+
+.mapName {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
 .topRight {
@@ -44,11 +70,13 @@
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   font-size: 16px;
+  transition: all 0.2s ease;
 }
 
-.iconBtn:hover {
+.iconBtn:hover:not(:disabled) {
   border-color: var(--color-primary);
   color: var(--color-primary);
+  background: var(--color-panel-light);
 }
 
 .bottomBar {
@@ -70,15 +98,20 @@
 }
 
 .bottomBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 8px 20px;
   font-size: var(--font-size-sm);
   color: var(--color-text-primary);
   background: var(--color-panel);
   border: var(--border-width-normal) solid var(--color-border);
   border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
 }
 
-.bottomBtn:hover {
+.bottomBtn:hover:not(:disabled) {
   border-color: var(--color-primary);
   color: var(--color-primary);
+  background: var(--color-panel-light);
 }

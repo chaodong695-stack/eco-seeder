@@ -15,6 +15,8 @@ import { DailyTaskPanel, DailyTaskSummary } from '@/ui/components/DailyTaskPanel
 import { CollapsibleRightHud } from '@/ui/components/CollapsibleRightHud';
 import { DevDebugPanel } from '@/ui/components/DevDebugPanel';
 import { resetWorldSession } from '@/game/session/resetWorldSession';
+import { getAudioManager, playSfxByKey, playBgmByKey } from '@/game/audio/AudioManager';
+import { gameBridge } from '@/game/bridge/GameBridge';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -29,6 +31,34 @@ export function GamePage() {
   const isSettingsOpen = useUIStore((s) => s.isSettingsOpen);
   const errorMessage = useUIStore((s) => s.errorMessage);
   const setError = useUIStore((s) => s.setError);
+
+  // 监听 settingsStore 静音变化，同步到 AudioManager
+  const muted = useSettingsStore((s) => s.muted);
+  useEffect(() => {
+    getAudioManager().setMuted(muted);
+  }, [muted]);
+
+  // 监听游戏事件 — 任务完成和修复完成音效
+  useEffect(() => {
+    const unsubTaskComplete = gameBridge.on('DAILY_TASK_COMPLETED', () => {
+      playSfxByKey('taskComplete');
+    });
+    const unsubRestorationComplete = gameBridge.on('RESTORATION_COMPLETED', () => {
+      playSfxByKey('repairComplete');
+    });
+    const unsubTaskFeedback = gameBridge.on('TASK_FEEDBACK', (payload) => {
+      // 交互失败 / 条件不足时播放警告音
+      if (payload.message.includes('请先') || payload.message.includes('不适合') || payload.message.includes('已经完成')) {
+        playSfxByKey('warning');
+      }
+    });
+
+    return () => {
+      unsubTaskComplete();
+      unsubRestorationComplete();
+      unsubTaskFeedback();
+    };
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || !character) {
@@ -56,6 +86,8 @@ export function GamePage() {
   }, [character, setError]);
 
   const handleReturnToStart = () => {
+    playSfxByKey('click');
+
     if (gameInstanceRef.current) {
       gameInstanceRef.current.destroy();
       gameInstanceRef.current = null;
@@ -66,6 +98,11 @@ export function GamePage() {
     // 但在此处调用可以防止 React 组件在卸载前读取旧状态
     resetWorldSession();
     useSettingsStore.getState().resetSettings();
+
+    // 停止游戏 BGM，切换回开始页 BGM
+    getAudioManager().stopBgm();
+    playBgmByKey('start');
+
     returnToStart();
   };
 
@@ -91,7 +128,7 @@ export function GamePage() {
         </div>
       )}
 
-      {isReady && <GameHud onReturnToStart={handleReturnToStart} />}
+      {isReady && <GameHud onReturnToStart={handleReturnToStart} characterName={character?.displayName} />}
       {isReady && <WorldStatus />}
       {isReady && (
         <CollapsibleRightHud

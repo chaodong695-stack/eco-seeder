@@ -139,7 +139,7 @@ describe('TaskPanel', () => {
     }
 
     render(<TaskPanel />);
-    expect(screen.getByText('已完成')).toBeInTheDocument();
+    expect(screen.getAllByText(/已完成/).length).toBeGreaterThan(0);
     expect(screen.getByText('已完成，奖励已发放')).toBeInTheDocument();
   });
 

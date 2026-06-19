@@ -1,6 +1,7 @@
 import { useUIStore } from '@/store/uiStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useWorldStore } from '@/store/worldStore';
+import { getAudioManager, playSfxByKey } from '@/game/audio/AudioManager';
 import type { DemoTimePreset } from '@/domain/time/timeTypes';
 import { DAY_PHASE_DISPLAY_NAMES } from '@/domain/time/timeTypes';
 import { ALL_WEATHER_TYPES, WEATHER_DEFINITIONS } from '@/domain/weather/weatherTypes';
@@ -45,6 +46,15 @@ export function SettingsPanel() {
     } else {
       setTimeMode('demo', value);
       setWorldTimeMode('demo', value);
+    }
+  };
+
+  const handleMuteToggle = () => {
+    const newMuted = !muted;
+    setMuted(newMuted);
+    getAudioManager().setMuted(newMuted);
+    if (!newMuted) {
+      playSfxByKey('click');
     }
   };
 
@@ -199,11 +209,11 @@ export function SettingsPanel() {
             <span className={styles.toggleLabel}>静音</span>
             <div
               className={`${styles.toggle} ${muted ? styles.toggleOn : ''}`}
-              onClick={() => setMuted(!muted)}
+              onClick={handleMuteToggle}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') setMuted(!muted);
+                if (e.key === 'Enter') handleMuteToggle();
               }}
             >
               <div

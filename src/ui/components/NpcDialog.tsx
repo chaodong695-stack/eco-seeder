@@ -13,6 +13,7 @@ import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { findNpcById } from '@/game/npc/npcDefinitions';
 import { resolveDailyTaskDialog, type DailyTaskDialogAction, type DailyTaskDialogOption } from '@/game/npc/dailyTaskDialogResolver';
 import { gameBridge } from '@/game/bridge/GameBridge';
+import { playSfxByKey } from '@/game/audio/AudioManager';
 import styles from './NpcDialog.module.css';
 
 /** 每日任务 NPC ID 集合。 */
@@ -61,6 +62,7 @@ export function NpcDialog() {
 
   // 处理每日任务选项
   const handleDailyTaskOption = (action: DailyTaskDialogAction, instanceId?: string) => {
+    playSfxByKey('click');
     switch (action) {
       case 'accept_one': {
         if (instanceId) {

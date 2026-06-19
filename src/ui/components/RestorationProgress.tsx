@@ -3,6 +3,8 @@
  *
  * 监听 GameBridge 修复事件，显示清理进度条。
  * 不直接访问 Phaser 内部对象。
+ *
+ * DEV-06 美术化：使用 pollution-pile.png / restored-plants.png 图标。
  */
 
 import { useEffect, useState, useRef } from 'react';
@@ -15,6 +17,7 @@ import type {
   RestorationCompletedPayload,
 } from '@/game/restoration/restorationTypes';
 import { progressToPercent, progressBarText } from '@/game/restoration/restorationProgress';
+import { imageAssets } from '@/game/assets/assetManifest';
 import styles from './RestorationProgress.module.css';
 
 interface RestorationProgressState {
@@ -188,9 +191,23 @@ export function RestorationProgress() {
         : '清理已暂停，请返回污染物堆附近继续'
       : '松开 E 将暂停清理';
 
+  const iconSrc = state.completed
+    ? imageAssets.objects.restoredPlants
+    : imageAssets.objects.pollutionPile;
+
   return (
     <div className={styles.container}>
-      <div className={styles.header}>{headerText}</div>
+      <div className={styles.header}>
+        <img
+          className={styles.headerIcon}
+          src={iconSrc}
+          alt=""
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
+        {headerText}
+      </div>
       <div className={styles.progressBar}>
         <span className={styles.barText}>{bar}</span>
         <span className={styles.percent}>{percent}%</span>
