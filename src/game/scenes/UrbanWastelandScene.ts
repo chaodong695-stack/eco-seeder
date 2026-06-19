@@ -55,6 +55,24 @@ const GROUND_TILE_TEXTURE = 'scene-tile-cracked-ground';
 const DECOR_RUINS_TEXTURE = 'scene-decor-industrial-ruins';
 const DECOR_PLANT_TEXTURE = 'scene-decor-ruin-plant';
 
+/** NPC 立绘纹理 key — 按 NPC ID 映射。 */
+const NPC_TEXTURE_KEYS: Record<string, string> = {
+  'npc.engineer.lin': 'npc-lin-gong-side',
+  'npc_weather_ranger': 'npc-patrol-inspector-side',
+};
+
+/** NPC 立绘显示高度（像素）。 */
+const NPC_DISPLAY_HEIGHT = 120;
+
+/**
+ * 中景废墟装饰是否启用。
+ *
+ * industrial-ruins-strip.png 的 alpha 通道存在规则网格（~13px 间距）的不透明/透明块，
+ * 渲染时产生类似棋盘格的视觉效果。暂时禁用该装饰层，
+ * 只保留远景背景、地面、角色、交互物件。
+ */
+const RUINS_DECOR_ENABLED = false;
+
 /** 深度层级常量。 */
 const DEPTH = {
   background: 0,
@@ -92,8 +110,10 @@ const POLLUTION_ZONE_INTERACTION_ID = 'interaction.pollution_zone_01';
 /** 场景内的 NPC 实体包装。 */
 interface NpcEntity {
   config: NpcDefinition;
-  /** NPC 视觉对象 — 图片或隐形矩形（碰撞用）。 */
+  /** NPC 视觉对象 — 立绘图片或隐形矩形。 */
   gameObject: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+  /** NPC 物理体 — 不可见矩形，用于距离检测。 */
+  physBody: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
   body: Phaser.Physics.Arcade.StaticBody;
   isAvailable: boolean;
@@ -202,6 +222,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // 玩家侧视图
     this.load.image('player-male-side', sceneAssets.characters.maleSide);
     this.load.image('player-female-side', sceneAssets.characters.femaleSide);
+
+    // NPC 立绘
+    this.load.image('npc-lin-gong-side', sceneAssets.npc.linGong);
+    this.load.image('npc-patrol-inspector-side', sceneAssets.npc.patrolInspector);
   }
 
   create(): void {
@@ -250,7 +274,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.backgroundLayer.add(darkOverlay);
 
     // ── 第 1 层：中景废墟装饰 ──
-    if (this.textures.exists(DECOR_RUINS_TEXTURE)) {
+    // industrial-ruins-strip.png 的 alpha 通道存在规则网格，渲染时产生棋盘格效果，已禁用。
+    if (RUINS_DECOR_ENABLED && this.textures.exists(DECOR_RUINS_TEXTURE)) {
       const ruinsImg = this.add.image(W / 2, H * 0.45, DECOR_RUINS_TEXTURE);
       // 缩放到场景宽度
       const ruinsScale = W / ruinsImg.width;
@@ -466,6 +491,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // 销毁 NPC
     this.npcEntities.forEach((npc) => {
       npc.label.destroy();
+      npc.physBody.destroy();
       npc.gameObject.destroy();
     });
     this.npcEntities = [];
@@ -591,36 +617,69 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
   private createNpcs(): void {
     for (const config of NPC_DEFINITIONS) {
-      // NPC 使用不可见矩形作为物理体 — 正常模式下不可见，仅用于距离检测
-      const rect = this.add.rectangle(
+      const texKey = NPC_TEXTURE_KEYS[config.id];
+      const hasTexture = texKey && this.textures.exists(texKey);
+
+      // NPC 视觉对象：优先使用立绘图片，回退到不可见矩形
+      let visualObj: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+
+      if (hasTexture) {
+        const img = this.add.image(config.x, config.y, texKey!);
+        // 缩放到目标显示高度，保持宽高比
+        const texture = img.texture;
+        if (texture && texture.source[0]) {
+          const sourceHeight = texture.source[0].height;
+          if (sourceHeight > 0) {
+            img.setScale(NPC_DISPLAY_HEIGHT / sourceHeight);
+          }
+        }
+        // 原点设在底部中心，使脚底对齐地面
+        img.setOrigin(0.5, 1);
+        img.setPosition(config.x, config.y);
+        visualObj = img;
+      } else {
+        // 回退到不可见矩形（仅用于距离检测）
+        const rect = this.add.rectangle(
+          config.x,
+          config.y,
+          config.width,
+          config.height,
+          config.color,
+          DEBUG_HITBOX ? 0.7 : 0,
+        );
+        if (DEBUG_HITBOX) {
+          rect.setStrokeStyle(2, 0xffffff, 0.5);
+        }
+        visualObj = rect;
+      }
+      this.interactiveLayer.add(visualObj);
+
+      // 物理体 — 使用不可见矩形用于距离检测，不阻挡玩家
+      const physBody = this.add.rectangle(
         config.x,
         config.y,
         config.width,
         config.height,
-        config.color,
-        DEBUG_HITBOX ? 0.7 : 0,
+        0x000000,
+        0,
       );
-      if (DEBUG_HITBOX) {
-        rect.setStrokeStyle(2, 0xffffff, 0.5);
-      }
-      this.interactiveLayer.add(rect);
-
-      this.physics.add.existing(rect, true);
-      const body = rect.body as Phaser.Physics.Arcade.StaticBody;
+      this.interactiveLayer.add(physBody);
+      this.physics.add.existing(physBody, true);
+      const body = physBody.body as Phaser.Physics.Arcade.StaticBody;
       body.setSize(config.width, config.height);
       body.updateFromGameObject();
 
-      // NPC 碰撞策略：
-      // 所有 NPC 使用非阻挡型交互 — 玩家可以穿过 NPC。
-      // 通过距离判断显示"按 E 对话"，不阻止玩家移动。
-      // 使用 overlap 检测重叠，但不阻止移动。
-      this.physics.add.overlap(this.player.gameObject, rect);
-      // 禁用 NPC 物理碰撞体，玩家不会与其发生碰撞
+      // 非阻挡型交互 — 玩家可以穿过 NPC
+      this.physics.add.overlap(this.player.gameObject, physBody);
       body.checkCollision.none = true;
 
+      // 标签位置 — 在立绘头顶上方，不遮挡人物主体
+      const labelY = hasTexture
+        ? config.y - NPC_DISPLAY_HEIGHT - 8
+        : config.y - config.height / 2 - 15;
       const label = this.add.text(
         config.x,
-        config.y - config.height / 2 - 15,
+        labelY,
         config.displayName,
         {
           fontSize: '14px',
@@ -634,7 +693,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
       this.npcEntities.push({
         config,
-        gameObject: rect,
+        gameObject: visualObj,
+        physBody,
         label,
         body,
         isAvailable: false,

@@ -49,6 +49,10 @@ export const sceneAssets = {
     ruinPlantCluster: '/assets/images/decor/ruin-plant-cluster.png',
     industrialRuinsStrip: '/assets/images/decor/industrial-ruins-strip.png',
   },
+  npc: {
+    linGong: '/assets/images/characters/npc-lin-gong-side.png',
+    patrolInspector: '/assets/images/characters/npc-patrol-inspector-side.png',
+  },
 } as const;
 
 export const audioAssets = {
