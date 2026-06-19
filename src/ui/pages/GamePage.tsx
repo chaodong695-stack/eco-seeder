@@ -15,8 +15,9 @@ import { DailyTaskPanel, DailyTaskSummary } from '@/ui/components/DailyTaskPanel
 import { CollapsibleRightHud } from '@/ui/components/CollapsibleRightHud';
 import { DevDebugPanel } from '@/ui/components/DevDebugPanel';
 import { resetWorldSession } from '@/game/session/resetWorldSession';
-import { getAudioManager, playSfxByKey, playBgmByKey } from '@/game/audio/AudioManager';
+import { getAudioManager, playSfxByKey, playBgmByKey } from '@/game/audio/audioManager';
 import { gameBridge } from '@/game/bridge/GameBridge';
+import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -38,25 +39,27 @@ export function GamePage() {
     getAudioManager().setMuted(muted);
   }, [muted]);
 
-  // 监听游戏事件 — 任务完成和修复完成音效
+  // 监听游戏事件 — 任务完成、修复成功和 NPC 随机任务音效
   useEffect(() => {
     const unsubTaskComplete = gameBridge.on('DAILY_TASK_COMPLETED', () => {
       playSfxByKey('taskComplete');
     });
     const unsubRestorationComplete = gameBridge.on('RESTORATION_COMPLETED', () => {
-      playSfxByKey('repairComplete');
+      playSfxByKey('restoreSuccess');
     });
-    const unsubTaskFeedback = gameBridge.on('TASK_FEEDBACK', (payload) => {
-      // 交互失败 / 条件不足时播放警告音
-      if (payload.message.includes('请先') || payload.message.includes('不适合') || payload.message.includes('已经完成')) {
-        playSfxByKey('warning');
+    const unsubNpcDialogOpen = gameBridge.on('NPC_DIALOG_OPEN', () => {
+      // 只在 NPC 有可接取任务时播放 NPC 随机任务音效
+      const tasks = useDailyTaskStore.getState().tasks;
+      const hasAvailable = tasks.some((t) => t.status === 'available');
+      if (hasAvailable) {
+        playSfxByKey('npcRandomTask');
       }
     });
 
     return () => {
       unsubTaskComplete();
       unsubRestorationComplete();
-      unsubTaskFeedback();
+      unsubNpcDialogOpen();
     };
   }, []);
 
@@ -71,6 +74,12 @@ export function GamePage() {
 
     try {
       instance.mount(containerRef.current, character.gender);
+
+      // 进入游戏主场景 — 切换到游戏 BGM
+      getAudioManager().setScene('game');
+      getAudioManager().unlock();
+      playBgmByKey('wasteland');
+
       // 延迟设置就绪状态，等待 Phaser 初始化
       const timer = setTimeout(() => setIsReady(true), 300);
 
@@ -86,8 +95,6 @@ export function GamePage() {
   }, [character, setError]);
 
   const handleReturnToStart = () => {
-    playSfxByKey('click');
-
     if (gameInstanceRef.current) {
       gameInstanceRef.current.destroy();
       gameInstanceRef.current = null;
@@ -101,7 +108,9 @@ export function GamePage() {
 
     // 停止游戏 BGM，切换回开始页 BGM
     getAudioManager().stopBgm();
-    playBgmByKey('start');
+    getAudioManager().setScene('start');
+    getAudioManager().unlock();
+    playBgmByKey('startPage');
 
     returnToStart();
   };

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { resetWorldSession } from '@/game/session/resetWorldSession';
-import { playSfxByKey, playBgmByKey } from '@/game/audio/AudioManager';
+import { playBgmByKey, getAudioManager } from '@/game/audio/audioManager';
 import { imageAssets } from '@/game/assets/assetManifest';
 import type { PlayerCharacterGender } from '@/types';
 import styles from './CharacterSelectPage.module.css';
@@ -14,13 +14,11 @@ export function CharacterSelectPage() {
   const [selected, setSelected] = useState<PlayerCharacterGender | null>(null);
 
   const handleSelect = (gender: PlayerCharacterGender) => {
-    playSfxByKey('select');
     setSelected(gender);
   };
 
   const handleConfirm = () => {
     if (!selected) return;
-    playSfxByKey('click');
 
     // 选择角色进入游戏视为新一局 — 统一重置所有世界状态
     // 覆盖：刷新页面后从开始页重新进入、返回开始页后重新进入、切换角色
@@ -28,14 +26,15 @@ export function CharacterSelectPage() {
     selectCharacter(selected);
     resetWorldSession();
 
-    // 切换到游戏 BGM
-    playBgmByKey('game');
+    // 用户交互后解锁音频，切换到游戏 BGM
+    getAudioManager().unlock();
+    getAudioManager().setScene('game');
+    playBgmByKey('wasteland');
 
     setPage('game');
   };
 
   const handleBack = () => {
-    playSfxByKey('click');
     setPage('start');
   };
 
