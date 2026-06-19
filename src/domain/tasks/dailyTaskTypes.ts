@@ -84,6 +84,8 @@ export interface TaskProgressSignal {
 export interface DailyTaskGenerationInput {
   /** 匿名玩家 ID。 */
   anonymousPlayerId: string;
+  /** 选中角色 ID（用于角色独立存档种子）。 */
+  selectedCharacterId: string;
   /** 本地日期。 */
   localDate: string;
   /** 地图 ID。 */

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { GameInstance } from '@/game/bootstrap/GameInstance';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
-import { useEnvironmentStore } from '@/store/environmentStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { GameHud } from '@/ui/components/GameHud';
 import { InteractionPrompt } from '@/ui/components/InteractionPrompt';
@@ -14,6 +13,7 @@ import { RestorationProgress } from '@/ui/components/RestorationProgress';
 import { WorldStatus } from '@/ui/components/WorldStatus';
 import { DailyTaskPanel, DailyTaskSummary } from '@/ui/components/DailyTaskPanel';
 import { CollapsibleRightHud } from '@/ui/components/CollapsibleRightHud';
+import { DevDebugPanel } from '@/ui/components/DevDebugPanel';
 import styles from './GamePage.module.css';
 
 export function GamePage() {
@@ -60,9 +60,8 @@ export function GamePage() {
       gameInstanceRef.current = null;
     }
     setIsReady(false);
-    useEnvironmentStore.getState().resetEnvironment();
+    // 每日任务和环境状态不重置 — 返回开始页后不清空当日任务和修复进度
     useSettingsStore.getState().resetSettings();
-    // 每日任务不重置 — 返回开始页后不清空当日任务
     returnToStart();
   };
 
@@ -103,6 +102,7 @@ export function GamePage() {
       {isReady && isTaskPanelOpen && <TaskPanel />}
       {isReady && isNpcDialogOpen && <NpcDialog />}
       {isReady && isSettingsOpen && <SettingsPanel />}
+      {isReady && import.meta.env.DEV && <DevDebugPanel />}
     </div>
   );
 }

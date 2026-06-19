@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
+import { useEnvironmentStore } from '@/store/environmentStore';
 import { findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
 
 // Mutable mock for weather
@@ -35,6 +36,15 @@ vi.mock('@/store/worldStore', () => ({
   },
 }));
 
+// Mock playerStore
+vi.mock('@/store/playerStore', () => ({
+  usePlayerStore: {
+    getState: () => ({
+      character: { characterId: 'character.player_male', gender: 'male', displayName: '男性生态修复员' },
+    }),
+  },
+}));
+
 vi.mock('@/game/bridge/GameBridge', () => ({
   gameBridge: {
     emit: vi.fn(),
@@ -49,6 +59,7 @@ function setWeather(weather: string): void {
 describe('dailyTaskWeatherGating', () => {
   beforeEach(() => {
     localStorage.clear();
+    useEnvironmentStore.getState().resetEnvironment();
     useDailyTaskStore.getState().resetDailyTasks();
     vi.clearAllMocks();
     setWeather('clear');

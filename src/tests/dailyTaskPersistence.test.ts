@@ -28,7 +28,10 @@ function makePersistData(overrides: Partial<DailyTaskPersistData> = {}): DailyTa
     date: '2025-06-18',
     mapId: 'map.urban_wasteland',
     poolVersion: 'daily-tasks.v1',
+    selectedCharacterId: 'character.player_male',
     tasks: [makeInstance()],
+    contributedSources: [],
+    restorationProgress: 0,
     ...overrides,
   };
 }
@@ -108,28 +111,33 @@ describe('dailyTaskPersistence', () => {
   });
 
   describe('isPersistDataValid', () => {
-    it('returns true for matching date, map, and version', () => {
+    it('returns true for matching date, map, version, and character', () => {
       const data = makePersistData();
-      expect(isPersistDataValid(data, '2025-06-18', 'map.urban_wasteland', 'daily-tasks.v1')).toBe(true);
+      expect(isPersistDataValid(data, '2025-06-18', 'map.urban_wasteland', 'daily-tasks.v1', 'character.player_male')).toBe(true);
     });
 
     it('returns false for different date', () => {
       const data = makePersistData();
-      expect(isPersistDataValid(data, '2025-06-19', 'map.urban_wasteland', 'daily-tasks.v1')).toBe(false);
+      expect(isPersistDataValid(data, '2025-06-19', 'map.urban_wasteland', 'daily-tasks.v1', 'character.player_male')).toBe(false);
     });
 
     it('returns false for different map', () => {
       const data = makePersistData();
-      expect(isPersistDataValid(data, '2025-06-18', 'map.other', 'daily-tasks.v1')).toBe(false);
+      expect(isPersistDataValid(data, '2025-06-18', 'map.other', 'daily-tasks.v1', 'character.player_male')).toBe(false);
     });
 
     it('returns false for different version', () => {
       const data = makePersistData();
-      expect(isPersistDataValid(data, '2025-06-18', 'map.urban_wasteland', 'daily-tasks.v2')).toBe(false);
+      expect(isPersistDataValid(data, '2025-06-18', 'map.urban_wasteland', 'daily-tasks.v2', 'character.player_male')).toBe(false);
+    });
+
+    it('returns false for different character', () => {
+      const data = makePersistData();
+      expect(isPersistDataValid(data, '2025-06-18', 'map.urban_wasteland', 'daily-tasks.v1', 'character.player_female')).toBe(false);
     });
 
     it('returns false for null data', () => {
-      expect(isPersistDataValid(null, '2025-06-18', 'map.urban_wasteland', 'daily-tasks.v1')).toBe(false);
+      expect(isPersistDataValid(null, '2025-06-18', 'map.urban_wasteland', 'daily-tasks.v1', 'character.player_male')).toBe(false);
     });
   });
 
@@ -146,7 +154,7 @@ describe('dailyTaskPersistence', () => {
       const loaded = loadDailyTasks();
       // Data loads fine (schema is valid) but version doesn't match
       expect(loaded).not.toBeNull();
-      expect(isPersistDataValid(loaded, '2025-06-18', 'map.urban_wasteland', 'daily-tasks.v1')).toBe(false);
+      expect(isPersistDataValid(loaded, '2025-06-18', 'map.urban_wasteland', 'daily-tasks.v1', 'character.player_male')).toBe(false);
     });
   });
 });

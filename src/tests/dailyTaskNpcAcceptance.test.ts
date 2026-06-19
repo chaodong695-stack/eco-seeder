@@ -10,6 +10,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
+import { useEnvironmentStore } from '@/store/environmentStore';
 import { findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
 import { resolveDailyTaskDialog } from '@/game/npc/dailyTaskDialogResolver';
 import { gameBridge } from '@/game/bridge/GameBridge';
@@ -36,6 +37,15 @@ vi.mock('@/store/worldStore', () => ({
   },
 }));
 
+// Mock playerStore
+vi.mock('@/store/playerStore', () => ({
+  usePlayerStore: {
+    getState: () => ({
+      character: { characterId: 'character.player_male', gender: 'male', displayName: '男性生态修复员' },
+    }),
+  },
+}));
+
 // Mock gameBridge
 vi.mock('@/game/bridge/GameBridge', () => ({
   gameBridge: {
@@ -47,6 +57,7 @@ vi.mock('@/game/bridge/GameBridge', () => ({
 describe('dailyTaskNpcAcceptance', () => {
   beforeEach(() => {
     localStorage.clear();
+    useEnvironmentStore.getState().resetEnvironment();
     useDailyTaskStore.getState().resetDailyTasks();
     vi.clearAllMocks();
   });
@@ -158,7 +169,15 @@ describe('dailyTaskNpcAcceptance', () => {
     it('cannot accept completed task', () => {
       useDailyTaskStore.getState().init();
       const rangerTasks = useDailyTaskStore.getState().getTasksByNpcId('npc_weather_ranger');
-      const availableTask = rangerTasks.find((t) => t.status === 'available');
+      // Find an available task whose weather condition is met by current weather (heavy_rain)
+      // or has no weather condition
+      const availableTask = rangerTasks.find((t) => {
+        if (t.status !== 'available') return false;
+        const def = findDailyTaskById(t.taskId);
+        if (!def) return false;
+        if (!def.condition?.supportedWeather || def.condition.supportedWeather.length === 0) return true;
+        return def.condition.supportedWeather.includes('heavy_rain');
+      });
 
       if (!availableTask) return;
 
@@ -220,7 +239,15 @@ describe('dailyTaskNpcAcceptance', () => {
     it('completed task shows "✓" indicator', () => {
       useDailyTaskStore.getState().init();
       const rangerTasks = useDailyTaskStore.getState().getTasksByNpcId('npc_weather_ranger');
-      const availableTask = rangerTasks.find((t) => t.status === 'available');
+      // Find an available task whose weather condition is met by current weather (heavy_rain)
+      // or has no weather condition
+      const availableTask = rangerTasks.find((t) => {
+        if (t.status !== 'available') return false;
+        const def = findDailyTaskById(t.taskId);
+        if (!def) return false;
+        if (!def.condition?.supportedWeather || def.condition.supportedWeather.length === 0) return true;
+        return def.condition.supportedWeather.includes('heavy_rain');
+      });
 
       if (!availableTask) return;
 

@@ -8,6 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
+import { useEnvironmentStore } from '@/store/environmentStore';
 import { DAILY_TASKS_STORAGE_KEY } from '@/domain/tasks/dailyTaskPersistence';
 import type { DailyTaskInstance } from '@/domain/tasks/dailyTaskTypes';
 import { gameBridge } from '@/game/bridge/GameBridge';
@@ -30,6 +31,15 @@ vi.mock('@/store/worldStore', () => ({
       getDisplayWeather: () => 'clear' as const,
     }),
     subscribe: vi.fn(() => () => {}),
+  },
+}));
+
+// Mock playerStore
+vi.mock('@/store/playerStore', () => ({
+  usePlayerStore: {
+    getState: () => ({
+      character: { characterId: 'character.player_male', gender: 'male', displayName: '男性生态修复员' },
+    }),
   },
 }));
 
@@ -57,6 +67,7 @@ function makeInstance(overrides: Partial<DailyTaskInstance> = {}): DailyTaskInst
 describe('dailyTaskPersistenceDedup', () => {
   beforeEach(() => {
     localStorage.clear();
+    useEnvironmentStore.getState().resetEnvironment();
     useDailyTaskStore.getState().resetDailyTasks();
     vi.clearAllMocks();
   });

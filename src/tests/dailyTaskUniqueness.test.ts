@@ -13,6 +13,7 @@ import type { WeatherType } from '@/domain/weather/weatherTypes';
 
 const BASE_INPUT: DailyTaskGenerationInput = {
   anonymousPlayerId: 'anon.player.local.v1',
+  selectedCharacterId: 'character.player_male',
   localDate: '2025-06-18',
   mapId: 'map.urban_wasteland',
   dailyTaskPoolVersion: 'daily-tasks.v1',

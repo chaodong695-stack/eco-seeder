@@ -836,11 +836,13 @@ available → active → completed
 
 生成种子：
 ```text
-anonymousPlayerId:localDate:mapId:dailyTaskPoolVersion
+anonymousPlayerId:selectedCharacterId:localDate:mapId:dailyTaskPoolVersion
 ```
 
 使用 mulberry32 伪随机数生成器，相同种子生成相同任务列表。
 不使用 `Math.random()`。
+
+角色独立存档：种子中包含 `selectedCharacterId`，切换角色后生成不同任务列表。
 
 生成约束：
 - 每日生成 3 个不重复任务；
@@ -886,17 +888,34 @@ interface DailyTaskPersistData {
   date: string;
   mapId: string;
   poolVersion: string;
+  selectedCharacterId: string;
   tasks: DailyTaskInstance[];
+  contributedSources: string[];
+  restorationProgress: number;
 }
 ```
 
 使用 Zod 校验，数据损坏时安全回退并重新生成。
 localStorage 只是持久化介质，不是运行时事实来源。
 
+DEV-06 第四轮修复新增持久化字段：
+- `selectedCharacterId`：角色独立存档，切换角色后旧数据自动失效；
+- `contributedSources`：已消费的 sourceId 集合，刷新页面后防重复；
+- `restorationProgress`：区域修复进度，保证任务完成与区域修复进度一致。
+
+环境状态持久化：`eco-seeder.environment.v1`
+```ts
+interface EnvironmentPersistData {
+  state: EnvironmentState;
+  appliedTargetIds: string[];
+}
+```
+
 加载时去重：
 - `dailyTaskStore.init()` 加载持久化数据时调用 `deduplicatePersistedTasks`；
 - 如果存在重复 taskId 或 instanceId，只保留第一个出现的实例；
 - 如果去重后任务数量不足或检测到重复，自动重新生成当日任务。
+- `isPersistDataValid` 检查 date、mapId、poolVersion 和 selectedCharacterId 四个维度。
 
 ### 15.6 第二 NPC 定义
 
@@ -939,8 +958,20 @@ NPC 指示符：
 - Scene `create()` 中初始化每日任务 Store（幂等）。
 - Scene `SHUTDOWN`/`DESTROY` 时注销所有 GameBridge 监听。
 - NPC 在 `create()` 中创建，`handleSceneCleanup()` 中销毁，不重复创建。
-- 返回开始页不清空当日任务，重新进入后恢复进度。
+- 返回开始页不清空当日任务和环境修复进度，重新进入后恢复。
 - 日期变化后自动生成新一日任务。
+
+角色切换策略（策略 A：角色独立存档）：
+- 切换角色时清除每日任务持久化数据；
+- 重置环境状态（包括 environmentStore 的 localStorage）；
+- 重置 dailyTaskStore 状态（isInitialized=false）；
+- 场景重建后 init() 使用新的 selectedCharacterId 生成新任务；
+- 旧角色的任务进度和区域修复状态不再保留。
+
+任务完成与区域修复一致性：
+- 任务完成时通过 `applyTaskReward` 将 `reward.restorationValue` 应用到 `environmentStore`；
+- 奖励最多发放一次（由 `rewardClaimed` 标志和 `appliedTargetIds` 共同保证）；
+- `restorationProgress` 随每日任务一起持久化，刷新后保持一致。
 
 ### 15.8 UI 布局
 
@@ -987,10 +1018,24 @@ NPC 指示符：
 - **NPC 对话**（`NpcDialog`）：接取 NPC 所属任务。
 
 三处必须读取同一个 `dailyTaskStore`，不得各自维护任务副本。
+旧任务 Store（`taskStore`）不再影响 DailyTaskPanel 和 TaskPanel。
 
 进行中任务 = `status === "active" || status === "waiting_condition"`
 
-### 15.10 任务目标映射
+### 15.10 开发调试面板
+
+仅 `import.meta.env.DEV` 为 true 时渲染 `DevDebugPanel`，生产环境不渲染。
+
+显示内容：
+- 当前 `dailyTaskStore` 状态（tasks、isInitialized、contributedSources）；
+- 当前 `worldStore` 日期和天气；
+- 当前选中角色 ID；
+- 当前区域状态（restorationProgress、pollution、visualStage、appliedTargetIds）；
+- localStorage 中的每日任务 payload（含 contributedSources、restorationProgress）；
+- 当前任务存储 key；
+- 当前任务生成种子。
+
+### 15.11 任务目标映射
 
 每个进入正式生成池的每日任务都必须有对应的场景交互对象：
 

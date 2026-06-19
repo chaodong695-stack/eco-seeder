@@ -14,6 +14,7 @@ import { render, screen } from '@testing-library/react';
 import { DailyTaskPanel } from '@/ui/components/DailyTaskPanel';
 import { TaskPanel } from '@/ui/components/TaskPanel';
 import { useUIStore } from '@/store/uiStore';
+import { useEnvironmentStore } from '@/store/environmentStore';
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
 
@@ -51,10 +52,20 @@ vi.mock('@/game/bridge/GameBridge', () => ({
   },
 }));
 
+// Mock playerStore
+vi.mock('@/store/playerStore', () => ({
+  usePlayerStore: {
+    getState: () => ({
+      character: { characterId: 'character.player_male', gender: 'male', displayName: '男性生态修复员' },
+    }),
+  },
+}));
+
 describe('Task panel consistency — DailyTaskPanel and TaskPanel read same store', () => {
   beforeEach(() => {
     localStorage.clear();
     useDailyTaskStore.getState().resetDailyTasks();
+    useEnvironmentStore.getState().resetEnvironment();
     useUIStore.getState().returnToStart();
     useUIStore.getState().setTaskPanelOpen(true);
   });

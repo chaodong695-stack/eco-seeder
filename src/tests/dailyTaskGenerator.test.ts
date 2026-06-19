@@ -5,6 +5,7 @@ import type { DailyTaskGenerationInput, DailyTaskDefinition } from '@/domain/tas
 
 const BASE_INPUT: DailyTaskGenerationInput = {
   anonymousPlayerId: 'anon.player.local.v1',
+  selectedCharacterId: 'character.player_male',
   localDate: '2025-06-18',
   mapId: 'map.urban_wasteland',
   dailyTaskPoolVersion: 'daily-tasks.v1',
@@ -15,7 +16,7 @@ describe('dailyTaskGenerator', () => {
   describe('buildDailyTaskSeed', () => {
     it('builds deterministic seed string', () => {
       const seed = buildDailyTaskSeed(BASE_INPUT);
-      expect(seed).toBe('anon.player.local.v1:2025-06-18:map.urban_wasteland:daily-tasks.v1');
+      expect(seed).toBe('anon.player.local.v1:character.player_male:2025-06-18:map.urban_wasteland:daily-tasks.v1');
     });
 
     it('produces different seeds for different dates', () => {

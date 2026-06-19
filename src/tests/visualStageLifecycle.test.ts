@@ -31,6 +31,15 @@ vi.mock('@/store/worldStore', () => ({
   },
 }));
 
+// Mock playerStore
+vi.mock('@/store/playerStore', () => ({
+  usePlayerStore: {
+    getState: () => ({
+      character: { characterId: 'character.player_male', gender: 'male', displayName: '男性生态修复员' },
+    }),
+  },
+}));
+
 // Mock gameBridge for dailyTaskStore — use real implementation
 // (tests already import the real gameBridge)
 

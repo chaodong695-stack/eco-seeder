@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NpcDialog } from '@/ui/components/NpcDialog';
 import { useUIStore } from '@/store/uiStore';
+import { useEnvironmentStore } from "@/store/environmentStore";
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
 
 // Mock worldStore
@@ -32,6 +33,15 @@ vi.mock('@/store/worldStore', () => ({
   },
 }));
 
+// Mock playerStore
+vi.mock('@/store/playerStore', () => ({
+  usePlayerStore: {
+    getState: () => ({
+      character: { characterId: 'character.player_male', gender: 'male', displayName: '男性生态修复员' },
+    }),
+  },
+}));
+
 // Mock gameBridge
 vi.mock('@/game/bridge/GameBridge', () => ({
   gameBridge: {
@@ -46,6 +56,7 @@ describe('NpcDialog — daily task only', () => {
   beforeEach(() => {
     localStorage.clear();
     useDailyTaskStore.getState().resetDailyTasks();
+    useEnvironmentStore.getState().resetEnvironment();
     useUIStore.getState().returnToStart();
     vi.clearAllMocks();
   });

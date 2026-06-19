@@ -6,6 +6,12 @@
  * localStorage 只是持久化介质，不是运行时事实来源。
  *
  * 任务系统只读使用 worldStore 暴露的时间、天气和天气时间线。
+ *
+ * DEV-06 第四轮修复：
+ * - 持久化 contributedSources，刷新后防重复 sourceId；
+ * - 任务完成时应用 reward.restorationValue 到 environmentStore；
+ * - 持久化 restorationProgress，保证任务完成与区域修复进度一致；
+ * - 切换角色（selectedCharacterId 变化）时重置任务和区域状态。
  */
 
 import { create } from 'zustand';
@@ -31,8 +37,10 @@ import {
 } from '@/domain/tasks/dailyTaskPersistence';
 import { gameBridge } from '@/game/bridge/GameBridge';
 import { useWorldStore } from '@/store/worldStore';
+import { useEnvironmentStore } from '@/store/environmentStore';
 import { V0_1_MAIN_MAP_IDENTITY } from '@/content/maps/urbanWasteland';
 import { ANONYMOUS_PLAYER_ID } from '@/domain/time/worldTimeService';
+import { usePlayerStore } from '@/store/playerStore';
 import type { WeatherType } from '@/domain/weather/weatherTypes';
 
 /** 地图 ID 常量。 */
@@ -43,6 +51,8 @@ interface DailyTaskStoreState {
   tasks: DailyTaskInstance[];
   /** 当前日期。 */
   localDate: string;
+  /** 当前选中角色 ID。 */
+  selectedCharacterId: string;
   /** 是否已初始化。 */
   isInitialized: boolean;
   /** 已贡献进度的 source ID 集合（防重复）。 */
@@ -60,8 +70,10 @@ interface DailyTaskStoreState {
   getTasksByNpcId: (npcId: string) => DailyTaskInstance[];
   /** 获取所有任务（含定义信息）。 */
   getAllTasks: () => DailyTaskInstance[];
-  /** 重置（返回开始页时调用）。 */
+  /** 重置（返回开始页或切换角色时调用）。 */
   resetDailyTasks: () => void;
+  /** 切换角色时重置任务和区域状态。 */
+  onCharacterChange: () => void;
 }
 
 /**
@@ -92,17 +104,29 @@ function deduplicatePersistedTasks(
 }
 
 /**
+ * 从 playerStore 获取当前选中角色 ID。
+ */
+function getSelectedCharacterId(): string {
+  return usePlayerStore.getState().character?.characterId ?? 'character.default';
+}
+
+/**
  * 持久化当前任务到 localStorage。
  */
 function persistTasks(
   tasks: DailyTaskInstance[],
   localDate: string,
+  selectedCharacterId: string,
+  contributedSources: Set<string>,
 ): void {
   const data: DailyTaskPersistData = {
     date: localDate,
     mapId: MAP_ID,
     poolVersion: DAILY_TASK_POOL_VERSION,
+    selectedCharacterId,
     tasks,
+    contributedSources: Array.from(contributedSources),
+    restorationProgress: useEnvironmentStore.getState().state.restorationProgress,
   };
   saveDailyTasks(data);
 }
@@ -123,9 +147,32 @@ function getCurrentDisplayWeather(): WeatherType {
   return useWorldStore.getState().getDisplayWeather();
 }
 
+/**
+ * 应用任务完成奖励到 environmentStore。
+ *
+ * 同一任务奖励最多发放一次（由 rewardClaimed 标志保证）。
+ */
+function applyTaskReward(taskId: string): void {
+  const def = findDailyTaskById(taskId);
+  if (!def?.reward?.restorationValue) return;
+
+  const envStore = useEnvironmentStore.getState();
+  // 使用任务 instanceId 作为 targetId 防重复
+  const rewardTargetId = `reward.${taskId}`;
+  if (envStore.isEffectApplied(rewardTargetId)) return;
+
+  envStore.applyEffect(rewardTargetId, {
+    pollution: 0,
+    vegetation: 0,
+    waterQuality: 0,
+    restorationProgress: def.reward.restorationValue,
+  });
+}
+
 export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
   tasks: [],
   localDate: '',
+  selectedCharacterId: '',
   isInitialized: false,
   contributedSources: new Set<string>(),
 
@@ -135,13 +182,19 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
 
     const worldStore = useWorldStore.getState();
     const localDate = worldStore.timeSnapshot.localDate;
+    const selectedCharacterId = getSelectedCharacterId();
 
     // 尝试从 localStorage 恢复
     const persisted = loadDailyTasks();
-    if (isPersistDataValid(persisted, localDate, MAP_ID, DAILY_TASK_POOL_VERSION)) {
-      // 过滤重复 taskId 或 instanceId — 已经存储的重复任务数据自动失效
+    if (isPersistDataValid(persisted, localDate, MAP_ID, DAILY_TASK_POOL_VERSION, selectedCharacterId)) {
+      // 过滤重复 taskId 或 instanceId
       const { tasks: dedupedTasks, hadDuplicates } = deduplicatePersistedTasks(
         persisted.tasks,
+      );
+
+      // 恢复 contributedSources
+      const restoredContributedSources = new Set<string>(
+        persisted.contributedSources ?? [],
       );
 
       // 恢复后根据当前天气刷新状态
@@ -161,6 +214,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
         const newTasks = generateDailyTasks(
           {
             anonymousPlayerId: ANONYMOUS_PLAYER_ID,
+            selectedCharacterId,
             localDate,
             mapId: MAP_ID,
             dailyTaskPoolVersion: DAILY_TASK_POOL_VERSION,
@@ -172,10 +226,11 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
         set({
           tasks: newTasks,
           localDate,
+          selectedCharacterId,
           isInitialized: true,
           contributedSources: new Set<string>(),
         });
-        persistTasks(newTasks, localDate);
+        persistTasks(newTasks, localDate, selectedCharacterId, new Set<string>());
         gameBridge.emit('DAILY_TASKS_GENERATED', { tasks: newTasks });
         return;
       }
@@ -183,10 +238,11 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
       set({
         tasks: refreshedTasks,
         localDate,
+        selectedCharacterId,
         isInitialized: true,
-        contributedSources: new Set<string>(),
+        contributedSources: restoredContributedSources,
       });
-      persistTasks(refreshedTasks, localDate);
+      persistTasks(refreshedTasks, localDate, selectedCharacterId, restoredContributedSources);
       gameBridge.emit('DAILY_TASKS_GENERATED', { tasks: refreshedTasks });
       return;
     }
@@ -196,6 +252,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
     const newTasks = generateDailyTasks(
       {
         anonymousPlayerId: ANONYMOUS_PLAYER_ID,
+        selectedCharacterId,
         localDate,
         mapId: MAP_ID,
         dailyTaskPoolVersion: DAILY_TASK_POOL_VERSION,
@@ -207,10 +264,11 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
     set({
       tasks: newTasks,
       localDate,
+      selectedCharacterId,
       isInitialized: true,
       contributedSources: new Set<string>(),
     });
-    persistTasks(newTasks, localDate);
+    persistTasks(newTasks, localDate, selectedCharacterId, new Set<string>());
     gameBridge.emit('DAILY_TASKS_GENERATED', { tasks: newTasks });
   },
 
@@ -243,7 +301,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
 
     if (changed) {
       set({ tasks: updatedTasks });
-      persistTasks(updatedTasks, state.localDate);
+      persistTasks(updatedTasks, state.localDate, state.selectedCharacterId, state.contributedSources);
     }
   },
 
@@ -263,7 +321,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
     );
 
     set({ tasks: updatedTasks });
-    persistTasks(updatedTasks, state.localDate);
+    persistTasks(updatedTasks, state.localDate, state.selectedCharacterId, state.contributedSources);
 
     gameBridge.emit('DAILY_TASK_STATUS_CHANGED', {
       instanceId,
@@ -289,7 +347,6 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
       if (def.objectiveType !== signal.objectiveType) return inst;
 
       // 天气门控 — 在 Store 层再次校验当前天气条件
-      // 非无条件任务在天气条件不满足时不计进度
       if (
         def.condition?.supportedWeather &&
         def.condition.supportedWeather.length > 0 &&
@@ -308,6 +365,9 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
           targetValue: result.instance.targetValue,
         });
         if (result.justCompleted) {
+          // 应用任务完成奖励到 environmentStore
+          applyTaskReward(result.instance.taskId);
+
           gameBridge.emit('DAILY_TASK_COMPLETED', {
             instanceId: result.instance.instanceId,
             taskId: result.instance.taskId,
@@ -319,7 +379,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
 
     if (changed) {
       set({ tasks: updatedTasks, contributedSources: newContributedSources });
-      persistTasks(updatedTasks, state.localDate);
+      persistTasks(updatedTasks, state.localDate, state.selectedCharacterId, newContributedSources);
     }
   },
 
@@ -340,6 +400,23 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
     set({
       tasks: [],
       localDate: '',
+      selectedCharacterId: '',
+      isInitialized: false,
+      contributedSources: new Set<string>(),
+    });
+  },
+
+  onCharacterChange: () => {
+    // 策略 A：切换角色等于新角色存档
+    // 清除每日任务持久化数据
+    clearDailyTasks();
+    // 重置环境状态（包括 environmentStore 的 localStorage）
+    useEnvironmentStore.getState().resetEnvironment();
+    // 重置 store 状态 — 不立即 init，等待 Scene create() 时调用
+    set({
+      tasks: [],
+      localDate: '',
+      selectedCharacterId: '',
       isInitialized: false,
       contributedSources: new Set<string>(),
     });

@@ -31,10 +31,10 @@ import {
 /**
  * 构建确定性种子字符串。
  *
- * 格式：anonymousPlayerId:localDate:mapId:dailyTaskPoolVersion
+ * 格式：anonymousPlayerId:selectedCharacterId:localDate:mapId:dailyTaskPoolVersion
  */
 export function buildDailyTaskSeed(input: DailyTaskGenerationInput): string {
-  return `${input.anonymousPlayerId}:${input.localDate}:${input.mapId}:${input.dailyTaskPoolVersion}`;
+  return `${input.anonymousPlayerId}:${input.selectedCharacterId}:${input.localDate}:${input.mapId}:${input.dailyTaskPoolVersion}`;
 }
 
 /**
@@ -135,6 +135,7 @@ export function generateDailyTasks(
   const seedStr = buildDailyTaskSeed(input);
   const seedNum = buildSeed(
     input.anonymousPlayerId,
+    input.selectedCharacterId,
     input.localDate,
     input.mapId,
     input.dailyTaskPoolVersion,

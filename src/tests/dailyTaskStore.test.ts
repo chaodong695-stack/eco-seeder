@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { DAILY_TASK_POOL_VERSION, findDailyTaskById } from '@/domain/tasks/dailyTaskDefinitions';
 import { gameBridge } from '@/game/bridge/GameBridge';
+import { useEnvironmentStore } from '@/store/environmentStore';
 
 // Mock worldStore getState
 vi.mock('@/store/worldStore', () => ({
@@ -25,6 +26,15 @@ vi.mock('@/store/worldStore', () => ({
   },
 }));
 
+// Mock playerStore
+vi.mock('@/store/playerStore', () => ({
+  usePlayerStore: {
+    getState: () => ({
+      character: { characterId: 'character.player_male', gender: 'male', displayName: '男性生态修复员' },
+    }),
+  },
+}));
+
 // Mock gameBridge emit
 vi.mock('@/game/bridge/GameBridge', () => ({
   gameBridge: {
@@ -37,6 +47,7 @@ describe('dailyTaskStore', () => {
   beforeEach(() => {
     localStorage.clear();
     useDailyTaskStore.getState().resetDailyTasks();
+    useEnvironmentStore.getState().resetEnvironment();
     vi.clearAllMocks();
   });
 

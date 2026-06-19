@@ -3,6 +3,11 @@
  *
  * localStorage 只是持久化介质，不是运行时事实来源。
  * 领域逻辑与 localStorage 分离。
+ *
+ * DEV-06 第四轮修复：
+ * - 持久化 contributedSources（防重复 sourceId）；
+ * - 持久化 selectedCharacterId（角色独立存档）；
+ * - 持久化 restorationProgress（区域修复进度一致性）。
  */
 
 import { z } from 'zod';
@@ -16,7 +21,10 @@ export interface DailyTaskPersistData {
   date: string;
   mapId: string;
   poolVersion: string;
+  selectedCharacterId: string;
   tasks: DailyTaskInstance[];
+  contributedSources: string[];
+  restorationProgress: number;
 }
 
 /** Zod schema — 校验持久化数据。 */
@@ -42,7 +50,10 @@ const DailyTaskPersistDataSchema = z.object({
   date: z.string(),
   mapId: z.string(),
   poolVersion: z.string(),
+  selectedCharacterId: z.string().optional(),
   tasks: z.array(DailyTaskInstanceSchema),
+  contributedSources: z.array(z.string()).optional(),
+  restorationProgress: z.number().nonnegative().optional(),
 });
 
 /**
@@ -71,7 +82,7 @@ export function loadDailyTasks(): DailyTaskPersistData | null {
 
     if (!result.success) return null;
 
-    return result.data;
+    return result.data as DailyTaskPersistData;
   } catch {
     return null;
   }
@@ -89,15 +100,18 @@ export function clearDailyTasks(): void {
 }
 
 /**
- * 判断持久化数据是否与当前日期和地图匹配。
+ * 判断持久化数据是否与当前日期、地图、角色和任务池版本匹配。
  */
 export function isPersistDataValid(
   data: DailyTaskPersistData | null,
   localDate: string,
   mapId: string,
   poolVersion: string,
+  selectedCharacterId: string,
 ): data is DailyTaskPersistData {
   if (!data) return false;
+  // selectedCharacterId 在旧数据中可能不存在，不匹配则失效
+  if (data.selectedCharacterId !== selectedCharacterId) return false;
   return (
     data.date === localDate &&
     data.mapId === mapId &&
