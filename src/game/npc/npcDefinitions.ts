@@ -6,14 +6,15 @@
  */
 
 import type { NpcDefinition } from './npcTypes';
+import { GROUND_TOP_Y } from '@/game/config/movementConfig';
 
 export const NPC_DEFINITIONS: NpcDefinition[] = [
   {
     id: 'npc.engineer.lin',
     displayName: '林工',
     role: '生态修复工程师',
-    x: 400,
-    y: 400,
+    x: 350,
+    y: GROUND_TOP_Y,
     width: 32,
     height: 48,
     interactionRange: 80,
@@ -24,7 +25,7 @@ export const NPC_DEFINITIONS: NpcDefinition[] = [
     displayName: '巡查员',
     role: '环境巡查员',
     x: 1700,
-    y: 300,
+    y: GROUND_TOP_Y,
     width: 32,
     height: 48,
     interactionRange: 80,

@@ -40,15 +40,10 @@ describe('npcPositionRegression', () => {
       expect(ranger.y).toBeLessThanOrEqual(WORLD_BOUNDS.height);
     });
 
-    it('is not on the main road (y = H - 200)', () => {
-      const roadY = WORLD_BOUNDS.height - 200;
-      const roadHeight = 60;
-      const roadTop = roadY - roadHeight / 2;
-      const roadBottom = roadY + roadHeight / 2;
-
-      // NPC should not be within the road area
-      const isOnRoad = ranger.y >= roadTop && ranger.y <= roadBottom;
-      expect(isOnRoad).toBe(false);
+    it('is on the ground level', () => {
+      // NPC 应站立在地面上（GROUND_TOP_Y）
+      const groundY = 880;
+      expect(ranger.y).toBe(groundY);
     });
 
     it('is not blocking pollution zone entrance', () => {

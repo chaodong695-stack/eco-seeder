@@ -20,7 +20,12 @@ import { Player } from '../entities/Player';
 import type { MovementInput } from '../entities/movementVector';
 import { InteractionZone } from '../interaction/InteractionZone';
 import { INTERACTION_OBJECTS, SCENE_TEXTURE_KEYS } from '../interaction/interactionObjects';
-import { WORLD_BOUNDS, CAMERA_FOLLOW } from '../config/movementConfig';
+import {
+  WORLD_BOUNDS,
+  CAMERA_FOLLOW,
+  DEBUG_HITBOX,
+  GROUND_TOP_Y,
+} from '../config/movementConfig';
 import { NPC_DEFINITIONS } from '../npc/npcDefinitions';
 import type { NpcDefinition } from '../npc/npcTypes';
 import { useUIStore, type InputMode } from '@/store/uiStore';
@@ -53,12 +58,12 @@ const DECOR_PLANT_TEXTURE = 'scene-decor-ruin-plant';
 /** 深度层级常量。 */
 const DEPTH = {
   background: 0,
-  ground: 1,
-  decor: 2,
-  obstacles: 5,
-  objects: 10,
-  player: 20,
-  labels: 30,
+  decor: 5,
+  ground: 10,
+  obstacles: 15,
+  objects: 20,
+  player: 30,
+  labels: 40,
   ui: 50,
 } as const;
 
@@ -78,13 +83,17 @@ const OBSTACLES: ObstacleConfig[] = [
   { x: 700, y: 850, width: 140, height: 80, color: 0x1a3538 },
 ];
 
+/** 地面可视高度（像素）。 */
+const GROUND_VISUAL_HEIGHT = 200;
+
 /** 污染物堆交互对象 ID。 */
 const POLLUTION_ZONE_INTERACTION_ID = 'interaction.pollution_zone_01';
 
 /** 场景内的 NPC 实体包装。 */
 interface NpcEntity {
   config: NpcDefinition;
-  gameObject: Phaser.GameObjects.Rectangle;
+  /** NPC 视觉对象 — 图片或隐形矩形（碰撞用）。 */
+  gameObject: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
   body: Phaser.Physics.Arcade.StaticBody;
   isAvailable: boolean;
@@ -104,8 +113,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
   /** 背景矩形引用 — 用于视觉阶段变化。 */
   private backgroundRect!: Phaser.GameObjects.Rectangle;
-  /** 修复区域附近的占位植被图形列表。 */
-  private vegetationGraphics: Phaser.GameObjects.Rectangle[] = [];
+  /** 修复区域附近的植被装饰对象列表。 */
+  private vegetationGraphics: Phaser.GameObjects.Image[] = [];
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -217,10 +226,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.effectsLayer = this.add.container(0, 0);
     this.effectsLayer.setDepth(40);
 
-    // 背景 — 使用工业废墟背景图片，覆盖整个视口
+    // ── 第 0 层：远景背景 ──
     if (this.textures.exists(SCENE_BG_TEXTURE)) {
       const bgImage = this.add.image(W / 2, H / 2, SCENE_BG_TEXTURE);
-      // 缩放到覆盖整个世界
+      // cover 缩放 — 覆盖整个世界但不严重变形
       const scaleX = W / bgImage.width;
       const scaleY = H / bgImage.height;
       const scale = Math.max(scaleX, scaleY);
@@ -235,50 +244,46 @@ export class UrbanWastelandScene extends Phaser.Scene {
       this.backgroundLayer.add(this.backgroundRect);
     }
 
-    // 轻微暗色遮罩 — 保证 HUD 可读性和交互物可见性
-    const darkOverlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.25);
+    // 轻微暗色遮罩 — 保证前景可读性
+    const darkOverlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.2);
     darkOverlay.setDepth(DEPTH.background + 0.1);
     this.backgroundLayer.add(darkOverlay);
 
-    // 工业废墟装饰条 — 中景装饰层，替换矩形建筑占位块
+    // ── 第 1 层：中景废墟装饰 ──
     if (this.textures.exists(DECOR_RUINS_TEXTURE)) {
-      const ruinsImg = this.add.image(W / 2, H - 350, DECOR_RUINS_TEXTURE);
+      const ruinsImg = this.add.image(W / 2, H * 0.45, DECOR_RUINS_TEXTURE);
       // 缩放到场景宽度
       const ruinsScale = W / ruinsImg.width;
       ruinsImg.setScale(ruinsScale);
       ruinsImg.setDepth(DEPTH.decor);
-      ruinsImg.setAlpha(0.85);
+      ruinsImg.setAlpha(0.6); // 降低透明度保证层次感和前景可读性
       this.backgroundLayer.add(ruinsImg);
-    } else {
-      // 回退到矩形建筑轮廓
+    } else if (DEBUG_HITBOX) {
+      // 仅调试时回退到矩形建筑轮廓
       this.createPlaceholderBuildings();
     }
 
-    // 地面 — 使用龟裂地面纹理，保留原物理碰撞逻辑
+    // ── 第 2 层：地面 / 平台纹理 ──
     if (this.textures.exists(GROUND_TILE_TEXTURE)) {
-      const groundImg = this.add.image(W / 2, H - 100, GROUND_TILE_TEXTURE);
-      // 缩放覆盖地面区域
-      const groundScale = Math.max(W / groundImg.width, 200 / groundImg.height);
+      // 用 tile 纹理覆盖底部地面条，仅用于地面区域
+      const groundImg = this.add.image(W / 2, GROUND_TOP_Y + GROUND_VISUAL_HEIGHT / 2, GROUND_TILE_TEXTURE);
+      // 缩放覆盖地面区域（宽度撑满，高度覆盖 GROUND_VISUAL_HEIGHT）
+      const groundScale = Math.max(W / groundImg.width, GROUND_VISUAL_HEIGHT / groundImg.height);
       groundImg.setScale(groundScale);
       groundImg.setDepth(DEPTH.ground);
       this.midgroundLayer.add(groundImg);
     } else {
-      const ground = this.add.rectangle(W / 2, H - 100, W, 200, 0x2a3535);
+      const ground = this.add.rectangle(W / 2, GROUND_TOP_Y + GROUND_VISUAL_HEIGHT / 2, W, GROUND_VISUAL_HEIGHT, 0x2a3535);
       ground.setDepth(DEPTH.ground);
       this.midgroundLayer.add(ground);
     }
 
-    // 道路 / 活动区域占位
-    const road = this.add.rectangle(W / 2, H - 200, W - 200, 60, 0x333f3f);
-    road.setDepth(DEPTH.ground);
-    this.midgroundLayer.add(road);
-
-    // 静态障碍物 — 碰撞区域与视觉轮廓一致
+    // ── 障碍物 — 仅 DEBUG_HITBOX 时显示可视化矩形 ──
     this.obstacles = this.physics.add.staticGroup();
     for (const obs of OBSTACLES) {
       const rect = this.add.rectangle(obs.x, obs.y, obs.width, obs.height, obs.color);
       rect.setDepth(DEPTH.obstacles);
-      rect.setAlpha(0.6);
+      rect.setAlpha(DEBUG_HITBOX ? 0.6 : 0); // 正常模式下隐藏障碍物可视化
       this.midgroundLayer.add(rect);
       this.physics.add.existing(rect, true);
       const body = rect.body as Phaser.Physics.Arcade.StaticBody;
@@ -290,10 +295,11 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // 绿植装饰簇 — 场景装饰，不参与任务判定
     this.createDecorPlants();
 
-    // 玩家 — 根据角色性别使用侧视图图片
+    // ── 玩家 — 站立在地面上 ──
     const character = usePlayerStore.getState().character;
     const gender = character?.gender;
-    this.player = new Player(this, W / 2, H - 250, '生态修复员', gender ?? undefined);
+    // 玩家脚底对齐地面顶部
+    this.player = new Player(this, W / 2, GROUND_TOP_Y, '生态修复员', gender ?? undefined);
     this.interactiveLayer.add([this.player.gameObject]);
 
     // 玩家与障碍物碰撞
@@ -549,23 +555,23 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private createDecorPlants(): void {
     if (!this.textures.exists(DECOR_PLANT_TEXTURE)) return;
 
-    const { height: H } = WORLD_BOUNDS;
     // 在生态巡查点、修复区域周围、地图边缘布置装饰
+    // 脚底对齐地面顶部
     const positions = [
-      { x: 250, y: H - 120, scale: 0.4 },
-      { x: 550, y: H - 100, scale: 0.35 },
-      { x: 1100, y: H - 110, scale: 0.4 },
-      { x: 1650, y: H - 120, scale: 0.35 },
-      { x: 180, y: H - 400, scale: 0.3 },
-      { x: 1750, y: H - 350, scale: 0.3 },
+      { x: 200, y: GROUND_TOP_Y, scale: 0.35 },
+      { x: 550, y: GROUND_TOP_Y, scale: 0.3 },
+      { x: 1000, y: GROUND_TOP_Y, scale: 0.35 },
+      { x: 1600, y: GROUND_TOP_Y, scale: 0.3 },
+      { x: 150, y: GROUND_TOP_Y - 200, scale: 0.25 },
+      { x: 1780, y: GROUND_TOP_Y - 150, scale: 0.25 },
     ];
 
     for (const pos of positions) {
       const plant = this.add.image(pos.x, pos.y, DECOR_PLANT_TEXTURE);
       plant.setScale(pos.scale);
-      plant.setOrigin(0.5, 1);
+      plant.setOrigin(0.5, 1); // 底部对齐
       plant.setDepth(DEPTH.decor);
-      plant.setAlpha(0.8);
+      plant.setAlpha(0.7);
       this.backgroundLayer.add(plant);
     }
   }
@@ -582,14 +588,18 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
   private createNpcs(): void {
     for (const config of NPC_DEFINITIONS) {
+      // NPC 使用不可见矩形作为物理体 — 正常模式下不可见，仅用于距离检测
       const rect = this.add.rectangle(
         config.x,
         config.y,
         config.width,
         config.height,
         config.color,
+        DEBUG_HITBOX ? 0.7 : 0,
       );
-      rect.setStrokeStyle(2, 0xffffff, 0.5);
+      if (DEBUG_HITBOX) {
+        rect.setStrokeStyle(2, 0xffffff, 0.5);
+      }
       this.interactiveLayer.add(rect);
 
       this.physics.add.existing(rect, true);
@@ -607,7 +617,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
       const label = this.add.text(
         config.x,
-        config.y - config.height / 2 - 10,
+        config.y - config.height / 2 - 15,
         config.displayName,
         {
           fontSize: '14px',
@@ -1223,7 +1233,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
   /**
    * 添加修复后植被装饰。
-   * 使用绿植装饰簇图片替代占位矩形。
+   * 使用绿植装饰簇图片在修复区域周围放置装饰。
    */
   private addPlaceholderVegetation(): void {
     if (this.vegetationGraphics.length > 0) return;
@@ -1236,33 +1246,20 @@ export class UrbanWastelandScene extends Phaser.Scene {
     const baseX = interactionObj.x;
     const baseY = interactionObj.y;
 
-    // 如果绿植装饰纹理可用，在修复区域周围放置装饰
+    // 使用绿植装饰簇图片在修复区域周围放置装饰
     if (this.textures.exists(DECOR_PLANT_TEXTURE)) {
       const positions = [
-        { x: baseX - 40, y: baseY + 20, scale: 0.25 },
-        { x: baseX + 35, y: baseY + 15, scale: 0.22 },
-        { x: baseX - 10, y: baseY + 40, scale: 0.28 },
+        { x: baseX - 50, y: baseY, scale: 0.25 },
+        { x: baseX + 40, y: baseY, scale: 0.22 },
+        { x: baseX - 10, y: baseY + 10, scale: 0.28 },
       ];
 
       for (const pos of positions) {
         const veg = this.add.image(pos.x, pos.y, DECOR_PLANT_TEXTURE);
         veg.setScale(pos.scale);
-        veg.setOrigin(0.5, 1);
+        veg.setOrigin(0.5, 1); // 底部对齐地面
         veg.setAlpha(0.85);
         veg.setDepth(DEPTH.objects);
-        this.interactiveLayer.add(veg);
-        this.vegetationGraphics.push(veg as unknown as Phaser.GameObjects.Rectangle);
-      }
-    } else {
-      // 回退到占位矩形
-      const positions = [
-        { x: baseX - 40, y: baseY + 20 },
-        { x: baseX + 35, y: baseY + 15 },
-        { x: baseX - 10, y: baseY + 40 },
-      ];
-
-      for (const pos of positions) {
-        const veg = this.add.rectangle(pos.x, pos.y, 12, 16, 0x7ed957, 0.8);
         this.interactiveLayer.add(veg);
         this.vegetationGraphics.push(veg);
       }

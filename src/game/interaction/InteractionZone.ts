@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { InteractionObjectConfig } from './interactionTypes';
 import { INTERACTION_COOLDOWN_MS } from '@/game/config/movementConfig';
+import { DEBUG_HITBOX } from '@/game/config/movementConfig';
 
 /** 视觉更新参数。 */
 export interface InteractionZoneVisualUpdate {
@@ -41,9 +42,9 @@ export class InteractionZone {
       if (config.displayHeight) {
         this.scaleImageToHeight(img, config.displayHeight);
       }
-      // 以底部中心为对齐点
+      // 以底部中心为对齐点 — 图片底部对齐 config.y（地面位置）
       img.setOrigin(0.5, 1);
-      img.setPosition(config.x, config.y + (config.height / 2));
+      img.setPosition(config.x, config.y);
       this.visualObject = img;
     } else {
       const rect = scene.add.rectangle(
@@ -52,13 +53,19 @@ export class InteractionZone {
         config.width,
         config.height,
         config.color,
-        0.7,
+        DEBUG_HITBOX ? 0.7 : 0,
       );
-      rect.setStrokeStyle(2, 0xffffff, 0.4);
+      if (DEBUG_HITBOX) {
+        rect.setStrokeStyle(2, 0xffffff, 0.4);
+      }
       this.visualObject = rect;
     }
 
-    this.label = scene.add.text(config.x, config.y - config.height / 2 - 10, config.displayName, {
+    // 标签位置 — 在视觉对象上方
+    const labelY = config.textureKey && scene.textures.exists(config.textureKey) && config.displayHeight
+      ? config.y - config.displayHeight - 8
+      : config.y - config.height / 2 - 10;
+    this.label = scene.add.text(config.x, labelY, config.displayName, {
       fontSize: '12px',
       color: '#EAF4F2',
       backgroundColor: 'rgba(8, 23, 26, 0.86)',
@@ -156,7 +163,7 @@ export class InteractionZone {
             this.scaleImageToHeight(img, this.config.displayHeight);
           }
           img.setOrigin(0.5, 1);
-          img.setPosition(this.config.x, this.config.y + (this.config.height / 2));
+          img.setPosition(this.config.x, this.config.y);
           img.setDepth(oldRect.depth);
           oldRect.destroy();
           this.visualObject = img;
@@ -168,7 +175,8 @@ export class InteractionZone {
     if (update.alpha !== undefined) {
       this.visualObject.setAlpha(update.alpha);
     }
-    if (update.scale !== undefined) {
+    // scale 只对 Rectangle 占位对象生效 — Image 对象使用 displayHeight 缩放
+    if (update.scale !== undefined && !this.isImageObject()) {
       this.visualObject.setScale(update.scale);
     }
     // color 只对 Rectangle 有效

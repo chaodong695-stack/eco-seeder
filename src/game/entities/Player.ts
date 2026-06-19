@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PLAYER_SIZE, PLAYER_SPEED } from '@/game/config/movementConfig';
+import { DEBUG_HITBOX } from '@/game/config/movementConfig';
 import { computeMovementVector, type MovementInput } from './movementVector';
 
 /** 玩家侧视图纹理 key — 在 Scene preload 中加载。 */
@@ -37,24 +38,37 @@ export class Player {
       this.gameObject = scene.add.image(x, y, texKey);
       const img = this.gameObject as Phaser.GameObjects.Image;
       this.scaleImageToHeight(img, PLAYER_DISPLAY_HEIGHT);
-      img.setOrigin(0.5, 0.5);
+      // 原点设在底部中心，使脚底对齐 Y 坐标
+      img.setOrigin(0.5, 1);
     } else {
-      // 回退到颜色矩形
-      this.gameObject = scene.add.rectangle(
+      // 回退到颜色矩形（仅调试时可见）
+      const rect = scene.add.rectangle(
         x,
         y,
         PLAYER_SIZE.width,
         PLAYER_SIZE.height,
         0x27d7c4,
+        DEBUG_HITBOX ? 1 : 0,
       );
+      rect.setOrigin(0.5, 1); // 与 Image 一致，底部对齐
+      this.gameObject = rect;
     }
 
     scene.physics.add.existing(this.gameObject);
     this.body = this.gameObject.body as Phaser.Physics.Arcade.Body;
     this.body.setCollideWorldBounds(true);
     this.body.setSize(PLAYER_SIZE.width, PLAYER_SIZE.height);
+    // 原点在底部中心时，body offset 需要调整使碰撞体在角色脚部上方
+    // Phaser body offset 是从 texture frame 左上角算起的
+    // 对于 origin(0.5,1) 的对象，需要居中碰撞体
+    const displayW = this.gameObject.displayWidth;
+    const displayH = this.gameObject.displayHeight;
+    this.body.setOffset(
+      (displayW - PLAYER_SIZE.width) / 2,
+      displayH - PLAYER_SIZE.height,
+    );
 
-    this.label = scene.add.text(x, y - 35, label, {
+    this.label = scene.add.text(x, y - PLAYER_DISPLAY_HEIGHT - 10, label, {
       fontSize: '14px',
       color: '#EAF4F2',
       backgroundColor: 'rgba(8, 23, 26, 0.86)',
@@ -87,8 +101,8 @@ export class Player {
     const { vx, vy } = computeMovementVector(input, PLAYER_SPEED);
     this.body.setVelocity(vx, vy);
 
-    // 更新标签位置
-    this.label.setPosition(this.gameObject.x, this.gameObject.y - 35);
+    // 更新标签位置 — 角色原点在脚底，标签在头顶上方
+    this.label.setPosition(this.gameObject.x, this.gameObject.y - PLAYER_DISPLAY_HEIGHT - 10);
 
     // 深度排序 — 基于 Y 坐标
     this.gameObject.setDepth(this.gameObject.y);
