@@ -89,16 +89,26 @@
 .statusActive {
   color: var(--color-primary);
   background: rgba(39, 215, 196, 0.15);
+  border: 1px solid rgba(39, 215, 196, 0.3);
 }
 
 .statusDone {
   color: var(--color-eco-green);
   background: rgba(126, 217, 87, 0.15);
+  border: 1px solid rgba(126, 217, 87, 0.3);
 }
 
 .statusWaiting {
   color: var(--color-warning);
   background: rgba(245, 185, 66, 0.15);
+  border: 1px solid rgba(245, 185, 66, 0.3);
+}
+
+.taskCompletedBar {
+  height: 3px;
+  background: linear-gradient(to right, var(--color-eco-green), var(--color-primary));
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
 }
 
 .taskDesc {

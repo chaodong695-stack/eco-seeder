@@ -101,13 +101,13 @@ describe('Task panel consistency — DailyTaskPanel and TaskPanel read same stor
     // Render DailyTaskPanel
     const { unmount: unmountDaily } = render(<DailyTaskPanel />);
     expect(screen.getByText(def.title)).toBeInTheDocument();
-    expect(screen.getByText('进行中')).toBeInTheDocument();
+    expect(screen.getByText(/进行中/)).toBeInTheDocument();
     unmountDaily();
 
     // Render TaskPanel — should show the same task
     render(<TaskPanel />);
     expect(screen.getByText(def.title)).toBeInTheDocument();
-    expect(screen.getByText('进行中')).toBeInTheDocument();
+    expect(screen.getByText(/进行中/)).toBeInTheDocument();
   });
 
   it('both panels show "等待天气" for weather task when condition not met', () => {
@@ -127,12 +127,12 @@ describe('Task panel consistency — DailyTaskPanel and TaskPanel read same stor
 
     // Render DailyTaskPanel — should show "等待天气"
     const { unmount: unmountDaily } = render(<DailyTaskPanel />);
-    expect(screen.getByText('等待天气')).toBeInTheDocument();
+    expect(screen.getAllByText(/等待天气/).length).toBeGreaterThan(0);
     unmountDaily();
 
     // Render TaskPanel — should also show "等待天气"
     render(<TaskPanel />);
-    expect(screen.getByText('等待天气')).toBeInTheDocument();
+    expect(screen.getAllByText(/等待天气/).length).toBeGreaterThan(0);
     // Should show the task title
     expect(screen.getByText(def.title)).toBeInTheDocument();
   });
@@ -172,11 +172,11 @@ describe('Task panel consistency — DailyTaskPanel and TaskPanel read same stor
 
     // Both panels should show "进行中"
     const { unmount: unmountDaily } = render(<DailyTaskPanel />);
-    expect(screen.getByText('进行中')).toBeInTheDocument();
+    expect(screen.getByText(/进行中/)).toBeInTheDocument();
     unmountDaily();
 
     render(<TaskPanel />);
-    expect(screen.getByText('进行中')).toBeInTheDocument();
+    expect(screen.getByText(/进行中/)).toBeInTheDocument();
   });
 
   it('both panels show completed status after task completion', () => {
@@ -210,11 +210,11 @@ describe('Task panel consistency — DailyTaskPanel and TaskPanel read same stor
 
     // Both panels should show "已完成"
     const { unmount: unmountDaily } = render(<DailyTaskPanel />);
-    expect(screen.getAllByText('已完成').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/已完成/).length).toBeGreaterThan(0);
     unmountDaily();
 
     render(<TaskPanel />);
-    expect(screen.getByText('已完成')).toBeInTheDocument();
+    expect(screen.getAllByText(/已完成/).length).toBeGreaterThan(0);
   });
 
   it('task state persists after reset + re-init (simulating return to start and re-enter)', () => {

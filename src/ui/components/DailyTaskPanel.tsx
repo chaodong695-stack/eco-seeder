@@ -98,6 +98,10 @@ export function DailyTaskPanel() {
                           : styles.statusAvailable
                   }`}
                 >
+                  {task.status === 'completed' && '✓ '}
+                  {task.status === 'waiting_condition' && '⏳ '}
+                  {task.status === 'active' && '▶ '}
+                  {task.status === 'available' && '○ '}
                   {STATUS_TEXT[task.status]}
                 </span>
               </div>

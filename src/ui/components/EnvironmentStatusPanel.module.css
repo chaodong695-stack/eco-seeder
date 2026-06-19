@@ -9,11 +9,24 @@
   overflow: hidden;
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.stageIcon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .title {
   font-size: var(--font-size-sm);
   color: var(--color-primary);
   font-weight: 600;
-  margin-bottom: var(--spacing-sm);
 }
 
 .metric {
@@ -40,6 +53,7 @@
 .metricFill {
   height: 100%;
   border-radius: var(--radius-sm);
+  transition: width 0.3s ease;
 }
 
 .metricValue {

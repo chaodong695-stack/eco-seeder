@@ -16,7 +16,7 @@ describe('GameHud', () => {
 
   it('opens task panel on task button click', () => {
     render(<GameHud onReturnToStart={() => {}} />);
-    fireEvent.click(screen.getByText('任务'));
+    fireEvent.click(screen.getByText(/任务/));
     expect(useUIStore.getState().isTaskPanelOpen).toBe(true);
   });
 
@@ -28,14 +28,16 @@ describe('GameHud', () => {
 
   it('opens settings panel on settings button click', () => {
     render(<GameHud onReturnToStart={() => {}} />);
-    fireEvent.click(screen.getAllByText('设置')[0]);
+    // Bottom bar settings button contains emoji + text
+    const settingsButtons = screen.getAllByText(/设置/);
+    fireEvent.click(settingsButtons[settingsButtons.length - 1]);
     expect(useUIStore.getState().isSettingsOpen).toBe(true);
   });
 
   it('calls onReturnToStart when return button clicked', () => {
     let called = false;
     render(<GameHud onReturnToStart={() => { called = true; }} />);
-    fireEvent.click(screen.getByText('返回开始'));
+    fireEvent.click(screen.getByText(/返回开始/));
     expect(called).toBe(true);
   });
 });

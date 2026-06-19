@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { resetWorldSession } from '@/game/session/resetWorldSession';
+import { playSfxByKey, playBgmByKey } from '@/game/audio/AudioManager';
+import { imageAssets } from '@/game/assets/assetManifest';
 import type { PlayerCharacterGender } from '@/types';
 import styles from './CharacterSelectPage.module.css';
 
@@ -11,8 +13,14 @@ export function CharacterSelectPage() {
   const existingCharacter = usePlayerStore((s) => s.character);
   const [selected, setSelected] = useState<PlayerCharacterGender | null>(null);
 
+  const handleSelect = (gender: PlayerCharacterGender) => {
+    playSfxByKey('select');
+    setSelected(gender);
+  };
+
   const handleConfirm = () => {
     if (!selected) return;
+    playSfxByKey('click');
 
     // 选择角色进入游戏视为新一局 — 统一重置所有世界状态
     // 覆盖：刷新页面后从开始页重新进入、返回开始页后重新进入、切换角色
@@ -20,57 +28,100 @@ export function CharacterSelectPage() {
     selectCharacter(selected);
     resetWorldSession();
 
+    // 切换到游戏 BGM
+    playBgmByKey('game');
+
     setPage('game');
+  };
+
+  const handleBack = () => {
+    playSfxByKey('click');
+    setPage('start');
   };
 
   return (
     <div className={styles.container}>
-      <h2 className={styles.title}>选择生态修复员</h2>
-      <div className={styles.cards}>
-        <div
-          className={`${styles.card} ${selected === 'male' ? styles.cardSelected : ''}`}
-          onClick={() => setSelected('male')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') setSelected('male');
-          }}
-        >
-          <div className={styles.avatar}>♂</div>
-          <span className={styles.cardName}>男性修复员</span>
-          <span className={styles.cardDesc}>男性生态修复员占位角色</span>
+      <div className={styles.bgGradient} />
+      <div className={styles.content}>
+        <h2 className={styles.title}>选择生态修复员</h2>
+        <p className={styles.subtitle}>选择你的角色，开始生态修复之旅</p>
+        <div className={styles.cards}>
+          {/* 男修复员卡片 */}
+          <div
+            className={`${styles.card} ${selected === 'male' ? styles.cardSelected : ''}`}
+            onClick={() => handleSelect('male')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSelect('male');
+            }}
+          >
+            <div className={styles.cardImageWrap}>
+              <img
+                className={styles.cardImage}
+                src={imageAssets.characters.male}
+                alt="男性修复员"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+              {selected === 'male' && (
+                <div className={styles.selectedBadge}>✓</div>
+              )}
+            </div>
+            <div className={styles.cardInfo}>
+              <span className={styles.cardName}>男性修复员</span>
+              <span className={styles.cardDesc}>男性生态修复员</span>
+            </div>
+          </div>
+
+          {/* 女修复员卡片 */}
+          <div
+            className={`${styles.card} ${selected === 'female' ? styles.cardSelected : ''}`}
+            onClick={() => handleSelect('female')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSelect('female');
+            }}
+          >
+            <div className={styles.cardImageWrap}>
+              <img
+                className={styles.cardImage}
+                src={imageAssets.characters.female}
+                alt="女性修复员"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+              {selected === 'female' && (
+                <div className={styles.selectedBadge}>✓</div>
+              )}
+            </div>
+            <div className={styles.cardInfo}>
+              <span className={styles.cardName}>女性修复员</span>
+              <span className={styles.cardDesc}>女性生态修复员</span>
+            </div>
+          </div>
         </div>
-        <div
-          className={`${styles.card} ${selected === 'female' ? styles.cardSelected : ''}`}
-          onClick={() => setSelected('female')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') setSelected('female');
-          }}
-        >
-          <div className={styles.avatar}>♀</div>
-          <span className={styles.cardName}>女性修复员</span>
-          <span className={styles.cardDesc}>女性生态修复员占位角色</span>
+        {existingCharacter && (
+          <p className={styles.notice}>
+            当前角色：{existingCharacter.displayName}。重新进入游戏将开始新一局，
+            所有任务和区域修复进度将重置为初始状态。
+          </p>
+        )}
+        <div className={styles.actions}>
+          <button className={styles.btnSecondary} onClick={handleBack}>
+            返回
+          </button>
+          <button
+            className={styles.btnPrimary}
+            onClick={handleConfirm}
+            disabled={!selected}
+          >
+            进入主场景
+          </button>
         </div>
-      </div>
-      {existingCharacter && (
-        <p className={styles.notice}>
-          当前角色：{existingCharacter.displayName}。重新进入游戏将开始新一局，
-          所有任务和区域修复进度将重置为初始状态。
-        </p>
-      )}
-      <div className={styles.actions}>
-        <button className={styles.btnSecondary} onClick={() => setPage('start')}>
-          返回
-        </button>
-        <button
-          className={styles.btnPrimary}
-          onClick={handleConfirm}
-          disabled={!selected}
-        >
-          进入主场景
-        </button>
       </div>
     </div>
   );

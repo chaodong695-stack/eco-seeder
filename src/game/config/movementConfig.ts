@@ -31,3 +31,12 @@ export const INTERACTION_RANGE = 80;
 
 /** 交互冷却时间（毫秒），防止同一帧内重复触发。 */
 export const INTERACTION_COOLDOWN_MS = 300;
+
+/** 调试标志 — 是否显示碰撞矩形、占位块和调试色块。
+ * 设为 false 时，所有逻辑矩形（碰撞体、任务点、交互范围）在正常游戏模式下隐藏可视化显示，
+ * 只保留真实图片素材和必要的文本标签。
+ */
+export const DEBUG_HITBOX = false;
+
+/** 地面顶部 Y 坐标（世界坐标系）。物体脚底应对齐此线。 */
+export const GROUND_TOP_Y = 880;

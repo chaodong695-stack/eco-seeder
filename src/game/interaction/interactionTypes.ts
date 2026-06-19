@@ -35,6 +35,18 @@ export interface InteractionObjectConfig {
   feedbackMessage: string;
   /** 视觉颜色（占位）。 */
   color: number;
+  /**
+   * Phaser 纹理 key — 如果提供则使用图片渲染，否则使用颜色矩形。
+   * 在 preload 阶段加载的纹理 key。
+   */
+  textureKey?: string;
+  /**
+   * 恢复后使用的纹理 key（可选）。
+   * 例如污染物堆修复后显示绿植图片。
+   */
+  restoredTextureKey?: string;
+  /** 图片显示高度（像素），用于缩放控制。 */
+  displayHeight?: number;
 }
 
 /** 交互可用事件 payload。 */
