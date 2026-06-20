@@ -1,0 +1,25 @@
+main:
+  push:
+    - stages:
+        - name: build-and-push
+          script: |
+            docker build -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest .
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
+      services:
+        - docker
+
+$:
+  vscode:
+    - runner:
+        cpus: 16
+      services:
+        - docker
+        - name: vscode
+          options:
+            onlyPreview: true
+            launch: >-
+              docker run -d --network host
+              -e PORT=8686
+              ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
+            keepAliveTimeout: 3600000
+            daemon: true
