@@ -13,4 +13,4 @@ RUN npm run build
 ENV PORT=8686
 EXPOSE 8686
 
-CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "8686"]
+CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "8686", "--strictPort"]
