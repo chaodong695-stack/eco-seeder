@@ -1,7 +1,7 @@
 import { useUIStore } from '@/store/uiStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useWorldStore } from '@/store/worldStore';
-import { getAudioManager, playSfxByKey } from '@/game/audio/AudioManager';
+import { getAudioManager } from '@/game/audio/audioManager';
 import type { DemoTimePreset } from '@/domain/time/timeTypes';
 import { DAY_PHASE_DISPLAY_NAMES } from '@/domain/time/timeTypes';
 import { ALL_WEATHER_TYPES, WEATHER_DEFINITIONS } from '@/domain/weather/weatherTypes';
@@ -52,10 +52,8 @@ export function SettingsPanel() {
   const handleMuteToggle = () => {
     const newMuted = !muted;
     setMuted(newMuted);
+    getAudioManager().unlock();
     getAudioManager().setMuted(newMuted);
-    if (!newMuted) {
-      playSfxByKey('click');
-    }
   };
 
   const handleDevWeatherPreview = (weather: WeatherType) => {

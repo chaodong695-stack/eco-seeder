@@ -1,20 +1,52 @@
+import { useEffect, useState } from 'react';
 import { useUIStore } from '@/store/uiStore';
-import { playBgmByKey, playSfxByKey } from '@/game/audio/AudioManager';
+import { useSettingsStore } from '@/store/settingsStore';
+import { getAudioManager, playBgmByKey } from '@/game/audio/audioManager';
 import { imageAssets } from '@/game/assets/assetManifest';
 import styles from './StartPage.module.css';
 
 export function StartPage() {
   const setPage = useUIStore((s) => s.setPage);
+  const muted = useSettingsStore((s) => s.muted);
+  const setMuted = useSettingsStore((s) => s.setMuted);
+  const [mutedState, setMutedState] = useState(muted);
+
+  // 进入开始页时设置场景并尝试播放 BGM
+  useEffect(() => {
+    const mgr = getAudioManager();
+    mgr.setScene('start');
+    mgr.setMuted(muted);
+    if (!muted) {
+      playBgmByKey('startPage');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleStart = () => {
-    playSfxByKey('click');
-    // 用户交互后开始播放开始页 BGM
-    playBgmByKey('start');
+    // 用户交互后解锁音频播放
+    getAudioManager().unlock();
+    // 开始播放开始页 BGM
+    playBgmByKey('startPage');
     setPage('character-select');
+  };
+
+  const handleToggleMute = () => {
+    const newMuted = !mutedState;
+    setMutedState(newMuted);
+    setMuted(newMuted);
+    getAudioManager().unlock();
+    getAudioManager().setMuted(newMuted);
   };
 
   return (
     <div className={styles.container}>
+      <button
+        className={styles.audioToggle}
+        title={mutedState ? '取消静音' : '静音'}
+        onClick={handleToggleMute}
+      >
+        {mutedState ? '🔇' : '🔊'}
+      </button>
       <img
         className={styles.bgImage}
         src={imageAssets.backgrounds.start}

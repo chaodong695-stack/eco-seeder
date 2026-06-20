@@ -55,16 +55,10 @@ export const sceneAssets = {
   },
 } as const;
 
-export const audioAssets = {
-  bgm: {
-    start: '/assets/audio/bgm/start-theme.mp3',
-    game: '/assets/audio/bgm/game-ambient.mp3',
-  },
-  sfx: {
-    click: '/assets/audio/sfx/click.mp3',
-    select: '/assets/audio/sfx/select.mp3',
-    taskComplete: '/assets/audio/sfx/task-complete.mp3',
-    repairComplete: '/assets/audio/sfx/repair-complete.mp3',
-    warning: '/assets/audio/sfx/warning.mp3',
-  },
-} as const;
+/**
+ * 音频资源路径 — DEV-08 统一音频配置。
+ *
+ * 实际音频路径定义在 src/game/audio/audioConfig.ts 中。
+ * 此处保留兼容性导出，指向同一份数据。
+ */
+export { AUDIO_ASSETS as audioAssets } from '@/game/audio/audioConfig';

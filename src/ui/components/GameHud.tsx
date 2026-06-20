@@ -2,7 +2,7 @@ import { useUIStore } from '@/store/uiStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { V0_1_MAIN_MAP_IDENTITY } from '@/content/maps/urbanWasteland';
-import { getAudioManager, playSfxByKey } from '@/game/audio/AudioManager';
+import { getAudioManager } from '@/game/audio/audioManager';
 import styles from './GameHud.module.css';
 
 interface GameHudProps {
@@ -29,24 +29,21 @@ export function GameHud({ onReturnToStart, characterName }: GameHudProps) {
   const displayName = characterName ?? character?.displayName ?? '修复员';
 
   const handleToggleMute = () => {
-    playSfxByKey('click');
     const newMuted = !muted;
     setMuted(newMuted);
+    getAudioManager().unlock();
     getAudioManager().setMuted(newMuted);
   };
 
   const handleReturn = () => {
-    playSfxByKey('click');
     onReturnToStart();
   };
 
   const handleTaskClick = () => {
-    playSfxByKey('click');
     setTaskPanelOpen(true);
   };
 
   const handleSettingsClick = () => {
-    playSfxByKey('click');
     setSettingsOpen(true);
   };
 
