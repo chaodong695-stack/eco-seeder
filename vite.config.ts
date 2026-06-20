@@ -31,4 +31,10 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     css: true,
   },
+  preview: {
+  host: '0.0.0.0',
+  port: 8686,
+  strictPort: true,
+  allowedHosts: ['.cnb.space'],
+},
 });
