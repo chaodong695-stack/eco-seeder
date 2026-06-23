@@ -1,0 +1,5 @@
+workspace:
+  launch:
+    button:
+      name: 开始播种
+      description: 进入 Eco Seeder 生态播种者试玩版

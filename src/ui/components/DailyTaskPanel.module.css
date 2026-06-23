@@ -1,0 +1,123 @@
+.panel {
+  flex-shrink: 0;
+  width: 100%;
+  max-height: 45vh;
+  background: var(--color-panel);
+  border: var(--border-width-normal) solid var(--color-border);
+  border-radius: var(--radius-md);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: var(--border-width-normal) solid var(--color-border);
+  background: var(--color-panel-light);
+}
+
+.title {
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.body {
+  padding: var(--spacing-sm);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.emptyText {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  padding: var(--spacing-md);
+}
+
+.taskItem {
+  background: var(--color-panel-light);
+  border: var(--border-width-normal) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.taskHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.taskName {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.taskStatus {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+}
+
+.statusDone {
+  color: var(--color-eco-green);
+  background: rgba(126, 217, 87, 0.15);
+  border: 1px solid rgba(126, 217, 87, 0.3);
+}
+
+.statusActive {
+  color: var(--color-primary);
+  background: rgba(39, 215, 196, 0.15);
+  border: 1px solid rgba(39, 215, 196, 0.3);
+}
+
+.statusWaiting {
+  color: var(--color-warning);
+  background: rgba(245, 185, 66, 0.15);
+  border: 1px solid rgba(245, 185, 66, 0.3);
+}
+
+.statusAvailable {
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.taskDesc {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.taskMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metaItem {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.waitingNotice {
+  font-size: 11px;
+  color: var(--color-warning);
+  font-weight: 600;
+  padding: 2px 0;
+}
+
+.completedNotice {
+  font-size: 11px;
+  color: var(--color-eco-green);
+  font-weight: 600;
+  padding: 2px 0;
+}

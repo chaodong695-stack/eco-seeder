@@ -1,0 +1,155 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 20, 23, 0.7);
+  z-index: 30;
+  pointer-events: auto;
+}
+
+.panel {
+  width: 400px;
+  background: var(--color-panel);
+  border: var(--border-width-normal) solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  border-bottom: var(--border-width-normal) solid var(--color-border);
+}
+
+.panelTitle {
+  font-size: var(--font-size-md);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.closeBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 18px;
+  border-radius: var(--radius-sm);
+}
+
+.closeBtn:hover {
+  color: var(--color-danger);
+}
+
+.panelBody {
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.settingGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.settingLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  display: flex;
+  justify-content: space-between;
+}
+
+.settingValue {
+  color: var(--color-primary);
+}
+
+.slider {
+  width: 100%;
+  accent-color: var(--color-primary);
+}
+
+.muteToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) 0;
+}
+
+.toggleLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.toggle {
+  width: 44px;
+  height: 24px;
+  background: var(--color-disabled);
+  border-radius: var(--radius-full);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.toggleOn {
+  background: var(--color-primary);
+}
+
+.toggleKnob {
+  width: 20px;
+  height: 20px;
+  background: var(--color-text-primary);
+  border-radius: var(--radius-full);
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: left 0.2s ease;
+}
+
+.toggleKnobOn {
+  left: 22px;
+}
+
+.timePresetGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs, 4px);
+}
+
+.presetBtn {
+  padding: 6px 14px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-panel);
+  border: var(--border-width-normal) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.presetBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.presetBtnActive {
+  background: var(--color-primary);
+  color: var(--color-panel);
+  border-color: var(--color-primary);
+}
+
+.devWeatherPreviewGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+  border-top: var(--border-width-normal) dashed var(--color-border);
+  border-bottom: var(--border-width-normal) dashed var(--color-border);
+}

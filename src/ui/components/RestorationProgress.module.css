@@ -1,0 +1,59 @@
+.container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 18;
+  pointer-events: none;
+  min-width: 280px;
+  background: var(--color-panel);
+  border: var(--border-width-normal) solid var(--color-eco-green);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  text-align: center;
+}
+
+.header {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+}
+
+.headerIcon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.progressBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.barText {
+  font-size: 16px;
+  color: var(--color-eco-green);
+  font-family: monospace;
+  letter-spacing: 1px;
+}
+
+.percent {
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  font-weight: 600;
+  min-width: 40px;
+  text-align: right;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}

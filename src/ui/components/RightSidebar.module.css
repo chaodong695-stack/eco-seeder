@@ -1,0 +1,19 @@
+.rightSidebar {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  bottom: 56px;
+  width: 300px;
+  max-width: 30vw;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-sm, 8px);
+  pointer-events: none;
+  z-index: 15;
+  overflow: hidden;
+}
+
+.rightSidebar > * {
+  pointer-events: auto;
+}

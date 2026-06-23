@@ -1,0 +1,55 @@
+{
+  "version": "0.1.0",
+  "baseUrl": "/assets",
+  "bundles": [
+    {
+      "id": "core-ui",
+      "name": "核心 UI 资源",
+      "entryIds": [
+        "ui.logo",
+        "ui.button_primary",
+        "ui.panel_bg",
+        "icon.task",
+        "icon.npc",
+        "icon.settings",
+        "icon.close",
+        "icon.back",
+        "icon.male",
+        "icon.female"
+      ]
+    },
+    {
+      "id": "urban-wasteland",
+      "name": "雾港旧工业区地图资源",
+      "entryIds": [
+        "map.urban_wasteland.background",
+        "map.urban_wasteland.midground",
+        "map.urban_wasteland.foreground",
+        "map.urban_wasteland.collision"
+      ]
+    },
+    {
+      "id": "character-male",
+      "name": "男性角色占位资源",
+      "entryIds": [
+        "character.male.idle",
+        "character.male.walk"
+      ]
+    },
+    {
+      "id": "character-female",
+      "name": "女性角色占位资源",
+      "entryIds": [
+        "character.female.idle",
+        "character.female.walk"
+      ]
+    },
+    {
+      "id": "robot-eco-assistant",
+      "name": "AI 生态助手占位资源",
+      "entryIds": [
+        "robot.eco_assistant.idle"
+      ]
+    }
+  ]
+}
