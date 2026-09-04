@@ -21,13 +21,17 @@
 }
 
 .backgroundScene { overflow: hidden; z-index: 0; }
+.smokeLayer { right: auto; bottom: auto; }
+.riverMist { right: auto; bottom: auto; }
+.industryLights { right: auto; bottom: auto; }
+.waterGlints { right: auto; bottom: auto; }
 .bgImage {
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: center center;
   transform: scale(1);
-  animation: slowPush 25s ease-in-out infinite alternate;
+  animation: slowPush 25s ease-in-out infinite;
   will-change: transform;
 }
 
@@ -44,7 +48,7 @@
 .smokeParticle:nth-child(3) { left: 20%; top: 48%; animation-delay: -4s; }
 .smokeParticle:nth-child(4) { left: 50%; top: 35%; animation-delay: -1s; transform: scale(.8); }
 .smokeParticle:nth-child(5) { left: 30%; top: 22%; animation-delay: -5s; transform: scale(1.4); }
-.smokeParticle:nth-child(n+6) { left: 42%; top: calc(8% + (var(--i, 1) * 3%)); animation-delay: -3s; opacity: .65; }
+.smokeParticle:nth-child(n+6) { left: 42%; top: 8%; animation-delay: -3s; opacity: .65; }
 
 .riverMist { top: 57%; height: 18%; opacity: .16; filter: blur(13px); background: repeating-linear-gradient(180deg, transparent 0 18px, rgba(195, 216, 215, .36) 24px 34px, transparent 42px 62px); }
 .riverMistForward { animation: mistRight 34s linear infinite; }
@@ -72,7 +76,7 @@
 .soundOn::before { content: ')))'; position: absolute; left: 10px; top: -7px; color: #d2e4df; font-size: 10px; }
 .soundOff::before { content: '×'; position: absolute; left: 10px; top: -10px; color: #d2e4df; font-size: 18px; }
 
-@keyframes slowPush { from { transform: scale(1); } to { transform: scale(1.025); } }
+@keyframes slowPush { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
 @keyframes smokeRise { 0%, 100% { opacity: .18; transform: translate(0, 10px) scale(.8); } 50% { opacity: .58; transform: translate(18px, -32px) scale(1.25); } }
 @keyframes mistRight { from { transform: translateX(-8%); } to { transform: translateX(8%); } }
 @keyframes mistLeft { from { transform: translateX(9%); } to { transform: translateX(-9%); } }
