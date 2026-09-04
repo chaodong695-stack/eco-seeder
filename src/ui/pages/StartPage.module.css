@@ -40,21 +40,25 @@
 }
 .vignette { box-shadow: inset 0 0 160px rgba(1, 8, 13, .78); }
 
-/* 烟柱位于画面中部偏左，粒子仅补充其体积感，不覆盖原始烟柱。 */
-.smokeLayer { left: 58%; top: 16%; width: 18%; height: 34%; opacity: .36; filter: blur(7px); }
-.smokeParticle { position: absolute; display: block; width: 32%; height: 24%; border-radius: 50%; background: rgba(166, 185, 188, .24); animation: smokeRise 10s ease-in-out infinite; }
+/* 按原图坐标划分：烟柱约 x=58%~72%、y=17%~49%。 */
+.smokeLayer { left: 56%; top: 16%; right: auto; bottom: auto; width: 19%; height: 35%; opacity: .62; filter: blur(6px); mix-blend-mode: screen; }
+.smokeLayer::before { content: ''; position: absolute; left: 29%; bottom: 4%; width: 34%; height: 78%; border-radius: 48% 52% 42% 58%; background: radial-gradient(ellipse at 50% 75%, rgba(172, 194, 194, .3), rgba(145, 171, 174, .14) 42%, transparent 72%); transform-origin: 50% 100%; animation: plumeSway 12s ease-in-out infinite; }
+.smokeParticle { position: absolute; display: block; width: 32%; height: 24%; border-radius: 50%; background: rgba(185, 204, 204, .34); animation: smokeRise 9s ease-in-out infinite; }
 .smokeParticle:nth-child(1) { left: 34%; top: 70%; animation-delay: -2s; }
 .smokeParticle:nth-child(2) { left: 48%; top: 58%; animation-delay: -7s; transform: scale(1.5); }
 .smokeParticle:nth-child(3) { left: 20%; top: 48%; animation-delay: -4s; }
 .smokeParticle:nth-child(4) { left: 50%; top: 35%; animation-delay: -1s; transform: scale(.8); }
 .smokeParticle:nth-child(5) { left: 30%; top: 22%; animation-delay: -5s; transform: scale(1.4); }
-.smokeParticle:nth-child(n+6) { left: 42%; top: 8%; animation-delay: -3s; opacity: .65; }
+.smokeParticle:nth-child(n+6) { left: 42%; top: 8%; animation-delay: -3s; opacity: .8; }
 
-.riverMist { top: 57%; height: 18%; opacity: .16; filter: blur(13px); background: repeating-linear-gradient(180deg, transparent 0 18px, rgba(195, 216, 215, .36) 24px 34px, transparent 42px 62px); }
+/* 水面只覆盖原图中 y=47%~88% 的河道区域，避免干扰岸边建筑。 */
+.riverMist { left: 34%; top: 48%; right: auto; bottom: auto; width: 63%; height: 28%; opacity: .25; filter: blur(11px); background: repeating-linear-gradient(180deg, transparent 0 16px, rgba(204, 224, 221, .42) 21px 29px, transparent 38px 58px); mask-image: linear-gradient(90deg, transparent, #000 10% 90%, transparent); }
 .riverMistForward { animation: mistRight 34s linear infinite; }
-.riverMistReverse { opacity: .11; transform: translateX(-18%); animation: mistLeft 46s linear infinite; }
-.industryLights { inset: 35% 16% auto 25%; height: 25%; opacity: .68; mix-blend-mode: screen; background: radial-gradient(circle at 34% 56%, rgba(255, 162, 93, .55) 0 2px, transparent 13px), radial-gradient(circle at 42% 63%, rgba(255, 194, 111, .45) 0 2px, transparent 12px), radial-gradient(circle at 54% 47%, rgba(255, 173, 95, .42) 0 2px, transparent 14px), radial-gradient(circle at 69% 67%, rgba(255, 192, 105, .5) 0 2px, transparent 11px); animation: lightsFlicker 5.8s ease-in-out infinite; }
-.waterGlints { top: 65%; height: 17%; opacity: .2; background: repeating-linear-gradient(174deg, transparent 0 13px, rgba(176, 219, 218, .36) 15px 17px, transparent 20px 34px); transform: translateX(-12%); animation: glintsDrift 38s linear infinite; }
+.riverMistReverse { opacity: .17; transform: translateX(8%); animation: mistLeft 46s linear infinite; }
+
+/* 工业灯光仅落在远岸建筑带，使用独立径向光点，不改变整张图片亮度。 */
+.industryLights { left: 36%; top: 29%; right: auto; bottom: auto; width: 58%; height: 27%; opacity: .78; mix-blend-mode: screen; background: radial-gradient(circle at 8% 52%, rgba(255, 160, 91, .82) 0 2px, transparent 11px), radial-gradient(circle at 19% 67%, rgba(255, 201, 132, .7) 0 2px, transparent 12px), radial-gradient(circle at 35% 42%, rgba(255, 174, 100, .76) 0 2px, transparent 13px), radial-gradient(circle at 47% 61%, rgba(255, 187, 109, .7) 0 2px, transparent 12px), radial-gradient(circle at 63% 48%, rgba(255, 195, 126, .7) 0 2px, transparent 12px), radial-gradient(circle at 82% 70%, rgba(255, 170, 92, .72) 0 2px, transparent 11px), radial-gradient(circle at 96% 55%, rgba(255, 192, 115, .65) 0 2px, transparent 10px); animation: lightsFlicker 5.8s ease-in-out infinite; }
+.waterGlints { left: 35%; top: 57%; right: auto; bottom: auto; width: 62%; height: 25%; opacity: .28; background: repeating-linear-gradient(174deg, transparent 0 13px, rgba(190, 228, 222, .5) 15px 17px, transparent 20px 34px); mask-image: linear-gradient(90deg, transparent, #000 12% 88%, transparent); transform: translateX(-12%); animation: glintsDrift 38s linear infinite; }
 
 .content { position: absolute; z-index: 2; top: 50%; left: clamp(32px, 13vw, 190px); transform: translateY(-42%); display: flex; flex-direction: column; align-items: flex-start; color: #f0f5f3; }
 .eyebrow { margin-bottom: clamp(16px, 3vh, 30px); color: #a9c1c2; font: 600 clamp(13px, 1.2vw, 17px)/1 var(--font-family-en); letter-spacing: clamp(4px, .8vw, 10px); animation: fadeUp 1s .25s both; }
@@ -77,7 +81,8 @@
 .soundOff::before { content: '×'; position: absolute; left: 10px; top: -10px; color: #d2e4df; font-size: 18px; }
 
 @keyframes slowPush { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
-@keyframes smokeRise { 0%, 100% { opacity: .18; transform: translate(0, 10px) scale(.8); } 50% { opacity: .58; transform: translate(18px, -32px) scale(1.25); } }
+@keyframes smokeRise { 0%, 100% { opacity: .2; transform: translate(0, 10px) scale(.8); } 50% { opacity: .78; transform: translate(22px, -38px) scale(1.3); } }
+@keyframes plumeSway { 0%, 100% { opacity: .35; transform: translateX(-5px) skewX(-2deg) scale(.94); } 50% { opacity: .72; transform: translateX(10px) skewX(4deg) scale(1.08); } }
 @keyframes mistRight { from { transform: translateX(-8%); } to { transform: translateX(8%); } }
 @keyframes mistLeft { from { transform: translateX(9%); } to { transform: translateX(-9%); } }
 @keyframes lightsFlicker { 0%, 100% { opacity: .58; } 35% { opacity: .76; } 52% { opacity: .62; } 74% { opacity: .72; } }
