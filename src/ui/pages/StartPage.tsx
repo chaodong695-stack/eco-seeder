@@ -5,27 +5,24 @@ import { getAudioManager, playBgmByKey } from '@/game/audio/audioManager';
 import { imageAssets } from '@/game/assets/assetManifest';
 import styles from './StartPage.module.css';
 
+const smokeParticles = Array.from({ length: 12 }, (_, index) => index);
+
 export function StartPage() {
   const setPage = useUIStore((s) => s.setPage);
   const muted = useSettingsStore((s) => s.muted);
   const setMuted = useSettingsStore((s) => s.setMuted);
   const [mutedState, setMutedState] = useState(muted);
 
-  // 进入开始页时设置场景并尝试播放 BGM
   useEffect(() => {
     const mgr = getAudioManager();
     mgr.setScene('start');
     mgr.setMuted(muted);
-    if (!muted) {
-      playBgmByKey('startPage');
-    }
+    if (!muted) playBgmByKey('startPage');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleStart = () => {
-    // 用户交互后解锁音频播放
     getAudioManager().unlock();
-    // 开始播放开始页 BGM
     playBgmByKey('startPage');
     setPage('character-select');
   };
@@ -39,43 +36,46 @@ export function StartPage() {
   };
 
   return (
-    <div className={styles.container}>
+    <main className={styles.container}>
+      <div className={styles.backgroundScene} aria-hidden="true">
+        <img className={styles.bgImage} src={imageAssets.backgrounds.start} alt="" />
+        <div className={styles.colorGrade} />
+        <div className={styles.smokeLayer}>
+          {smokeParticles.map((particle) => (
+            <i key={particle} className={styles.smokeParticle} />
+          ))}
+        </div>
+        <div className={`${styles.riverMist} ${styles.riverMistForward}`} />
+        <div className={`${styles.riverMist} ${styles.riverMistReverse}`} />
+        <div className={styles.industryLights} />
+        <div className={styles.waterGlints} />
+        <div className={styles.vignette} />
+      </div>
+
       <button
         className={styles.audioToggle}
         title={mutedState ? '取消静音' : '静音'}
+        aria-label={mutedState ? '取消静音' : '静音'}
         onClick={handleToggleMute}
       >
-        {mutedState ? '🔇' : '🔊'}
+        <span className={mutedState ? styles.soundOff : styles.soundOn} aria-hidden="true" />
       </button>
-      <img
-        className={styles.bgImage}
-        src={imageAssets.backgrounds.start}
-        alt=""
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).style.display = 'none';
-        }}
-      />
-      <div className={styles.overlay} />
-      <div className={styles.content}>
+
+      <section className={styles.content}>
+        <div className={styles.eyebrow}>ECO SEEDER</div>
         <div className={styles.titleBlock}>
           <h1 className={styles.title}>生态播种者</h1>
-          <p className={styles.subtitle}>
-            城市污染荒地生态修复计划
-          </p>
           <p className={styles.description}>
-            从污染到绿意 — 修复每一寸受损的土地，重建生态平衡
+            在受损的土地上<br />
+            重新建立人与生态系统的连接
           </p>
         </div>
-        {/* 方案 A：版本标签作为按钮上方独立徽章，不遮挡按钮主文案 */}
-        <span className={styles.versionBadge}>v0.1 · 生态修复原型</span>
-        <button
-          className={styles.startButton}
-          onClick={handleStart}
-        >
-          <span className={styles.startButtonIcon}>🌱</span>
+        <button className={styles.startButton} onClick={handleStart}>
           <span>开始修复</span>
+          <span className={styles.buttonArrow} aria-hidden="true">↗</span>
         </button>
-      </div>
-    </div>
+        <div className={styles.sectorLabel}>雾港生态修复计划 <span>·</span> SECTOR 01</div>
+      </section>
+    </main>
   );
 }

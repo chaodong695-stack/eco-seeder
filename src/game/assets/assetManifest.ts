@@ -10,7 +10,7 @@
 
 export const imageAssets = {
   backgrounds: {
-    start: '/assets/images/backgrounds/start-bg.png',
+    start: '/assets/images/backgrounds/start-bg.jpg',
   },
   characters: {
     male: '/assets/images/characters/repairer-male.png',
