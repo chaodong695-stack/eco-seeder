@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { NPC_DEFINITIONS, findNpcById } from '@/game/npc/npcDefinitions';
-import { WORLD_BOUNDS } from '@/game/config/movementConfig';
+import { WORLD_BOUNDS, WALKABLE_Y_MIN, WALKABLE_Y_MAX } from '@/game/config/movementConfig';
 import { INTERACTION_OBJECTS } from '@/game/interaction/interactionObjects';
 
 describe('npcPositionRegression', () => {
@@ -40,10 +40,10 @@ describe('npcPositionRegression', () => {
       expect(ranger.y).toBeLessThanOrEqual(WORLD_BOUNDS.height);
     });
 
-    it('is on the ground level', () => {
-      // NPC 应站立在地面上（GROUND_TOP_Y）
-      const groundY = 880;
-      expect(ranger.y).toBe(groundY);
+    it('is within the walkable depth band', () => {
+      // 2.5D 改造：NPC 应站立在可行走纵深带内（参与 Y-sort 遮挡）
+      expect(ranger.y).toBeGreaterThanOrEqual(WALKABLE_Y_MIN);
+      expect(ranger.y).toBeLessThanOrEqual(WALKABLE_Y_MAX);
     });
 
     it('is not blocking pollution zone entrance', () => {

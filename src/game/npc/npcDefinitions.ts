@@ -3,10 +3,11 @@
  *
  * 首个 NPC：林工 — 生态修复工程师。
  * 位置通过配置定义，不散落在场景代码中。
+ * 2.5D 改造：y 值在可行走纵深带 [WALKABLE_Y_MIN=700, WALKABLE_Y_MAX=1040] 内，
+ * 配合 Y-sort 深度产生前后遮挡关系。
  */
 
 import type { NpcDefinition } from './npcTypes';
-import { GROUND_TOP_Y } from '@/game/config/movementConfig';
 
 export const NPC_DEFINITIONS: NpcDefinition[] = [
   {
@@ -14,7 +15,7 @@ export const NPC_DEFINITIONS: NpcDefinition[] = [
     displayName: '林工',
     role: '生态修复工程师',
     x: 350,
-    y: GROUND_TOP_Y,
+    y: 860,
     width: 32,
     height: 48,
     interactionRange: 80,
@@ -25,7 +26,7 @@ export const NPC_DEFINITIONS: NpcDefinition[] = [
     displayName: '巡查员',
     role: '环境巡查员',
     x: 1700,
-    y: GROUND_TOP_Y,
+    y: 920,
     width: 32,
     height: 48,
     interactionRange: 80,

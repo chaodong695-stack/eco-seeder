@@ -34,6 +34,7 @@ vi.mock('phaser', () => {
       this.scaleY = s;
     }
     setStrokeStyle(): void {}
+    setDepth(): void {}
     destroy(): void {
       this.destroyed = true;
       this.scene = null;
@@ -50,6 +51,7 @@ vi.mock('phaser', () => {
       this.text = text;
     }
     setOrigin(): void {}
+    setDepth(): void {}
     setText(text: string): void {
       if (this.destroyed)
         throw new Error('Cannot setText on destroyed object');

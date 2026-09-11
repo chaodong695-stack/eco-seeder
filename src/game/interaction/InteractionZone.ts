@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { InteractionObjectConfig } from './interactionTypes';
 import { INTERACTION_COOLDOWN_MS } from '@/game/config/movementConfig';
 import { DEBUG_HITBOX } from '@/game/config/movementConfig';
+import { entityDepth, DEPTH_ENTITY_LABEL } from '@/game/config/depthConfig';
 
 /** 视觉更新参数。 */
 export interface InteractionZoneVisualUpdate {
@@ -72,6 +73,22 @@ export class InteractionZone {
       padding: { x: 4, y: 2 },
     });
     this.label.setOrigin(0.5);
+    this.label.setDepth(DEPTH_ENTITY_LABEL);
+    // 初始深度 — Y-sort（视觉对象直接挂场景根）
+    this.updateDepth();
+  }
+
+  /**
+   * 更新 Y-sort 深度 — 深度 = ENTITY_BASE + 配置 y。
+   *
+   * 在场景创建时、以及任何 config.y 变化后调用。
+   * 视觉对象必须直接挂载在场景根（不能放入 Container），否则深度排序失效。
+   */
+  updateDepth(): void {
+    if (this.destroyed) return;
+    if (this.visualObject && this.visualObject.scene) {
+      this.visualObject.setDepth(entityDepth(this.config.y));
+    }
   }
 
   /**
@@ -164,11 +181,12 @@ export class InteractionZone {
           }
           img.setOrigin(0.5, 1);
           img.setPosition(this.config.x, this.config.y);
-          img.setDepth(oldRect.depth);
+          img.setDepth(oldRect.depth); // 继承 Y-sort 深度
           oldRect.destroy();
           this.visualObject = img;
         }
         this.isRestored = true;
+        this.updateDepth(); // 确保深度与 Y-sort 规则一致
       }
     }
 

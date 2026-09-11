@@ -11,6 +11,11 @@
  * - NPC 全部改为非阻挡型（玩家可穿过），通过距离判断交互；
  * - 污染物堆迁移到每日任务进度信号，不再使用旧 taskStore；
  * - NPC 对话防重复触发（dialog 打开时不再重复打开）。
+ *
+ * 2.5D 改造（主游戏界面视觉改造执行规范 §1–§11）：
+ * - 七层 Parallax 图层（sky/far/mid/ground/gameplay/foreground/effects）；
+ * - 玩法实体（玩家/NPC/交互物/植被）保持直接挂场景根，确保 Y-sort 深度生效；
+ * - scrollFactor 统一在 PARALLAX 中定义，禁止散落调整。
  */
 
 import Phaser from 'phaser';
@@ -24,8 +29,29 @@ import {
   WORLD_BOUNDS,
   CAMERA_FOLLOW,
   DEBUG_HITBOX,
-  GROUND_TOP_Y,
+  WALKABLE_Y_MIN,
+  WALKABLE_Y_MAX,
+  PLAYER_SIZE,
 } from '../config/movementConfig';
+import {
+  DEPTH_BACKGROUND,
+  DEPTH_FAR,
+  DEPTH_DECOR,
+  DEPTH_GROUND,
+  DEPTH_OBSTACLE,
+  DEPTH_ENTITY_BASE,
+  DEPTH_FOREGROUND,
+  DEPTH_ENTITY_LABEL,
+  DEPTH_FX,
+  DEPTH_UI,
+  entityDepth,
+} from '../config/depthConfig';
+import {
+  PARALLAX,
+  FAR_HORIZON_Y,
+  MID_BOTTOM_Y,
+  FOREGROUND_ANCHOR_Y,
+} from '../config/parallaxConfig';
 import { NPC_DEFINITIONS } from '../npc/npcDefinitions';
 import type { NpcDefinition } from '../npc/npcTypes';
 import { useUIStore, type InputMode } from '@/store/uiStore';
@@ -49,10 +75,13 @@ import { sceneAssets } from '@/game/assets/assetManifest';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
 
-/** 场景纹理 key 常量。 */
-const SCENE_BG_TEXTURE = 'scene-bg-industrial-wasteland';
+/** 场景纹理 key 常量 — 2.5D 改造：分层背景统一命名。 */
+const SKY_TEXTURE = 'wasteland-sky';
+const FAR_CITY_TEXTURE = 'wasteland-far-city';
+const MID_BUILDINGS_TEXTURE = 'wasteland-mid-buildings';
+const GROUND_OVERLAY_TEXTURE = 'wasteland-ground';
+const FOREGROUND_TEXTURE = 'wasteland-foreground';
 const GROUND_TILE_TEXTURE = 'scene-tile-cracked-ground';
-const DECOR_RUINS_TEXTURE = 'scene-decor-industrial-ruins';
 const DECOR_PLANT_TEXTURE = 'scene-decor-ruin-plant';
 
 /** NPC 立绘纹理 key — 按 NPC ID 映射。 */
@@ -64,28 +93,9 @@ const NPC_TEXTURE_KEYS: Record<string, string> = {
 /** NPC 立绘显示高度（像素）。 */
 const NPC_DISPLAY_HEIGHT = 120;
 
-/**
- * 中景废墟装饰是否启用。
- *
- * industrial-ruins-strip.png 的 alpha 通道存在规则网格（~13px 间距）的不透明/透明块，
- * 渲染时产生类似棋盘格的视觉效果。暂时禁用该装饰层，
- * 只保留远景背景、地面、角色、交互物件。
+/** 静态障碍物配置 — 碰撞区域与视觉轮廓一致。
+ * 2.5D 改造：障碍物分布在可行走纵深带 [WALKABLE_Y_MIN, WALKABLE_Y_MAX] 内。
  */
-const RUINS_DECOR_ENABLED = false;
-
-/** 深度层级常量。 */
-const DEPTH = {
-  background: 0,
-  decor: 5,
-  ground: 10,
-  obstacles: 15,
-  objects: 20,
-  player: 30,
-  labels: 40,
-  ui: 50,
-} as const;
-
-/** 静态障碍物配置 — 碰撞区域与视觉轮廓一致。 */
 interface ObstacleConfig {
   x: number;
   y: number;
@@ -95,14 +105,11 @@ interface ObstacleConfig {
 }
 
 const OBSTACLES: ObstacleConfig[] = [
-  { x: 350, y: 600, width: 160, height: 100, color: 0x1a3538 },
-  { x: 900, y: 450, width: 200, height: 120, color: 0x152a2d },
-  { x: 1500, y: 700, width: 180, height: 110, color: 0x1f3a3e },
-  { x: 700, y: 850, width: 140, height: 80, color: 0x1a3538 },
+  { x: 350, y: 780, width: 160, height: 90, color: 0x1a3538 },
+  { x: 900, y: 760, width: 200, height: 100, color: 0x152a2d },
+  { x: 1500, y: 800, width: 180, height: 95, color: 0x1f3a3e },
+  { x: 700, y: 960, width: 140, height: 80, color: 0x1a3538 },
 ];
-
-/** 地面可视高度（像素）。 */
-const GROUND_VISUAL_HEIGHT = 200;
 
 /** 污染物堆交互对象 ID。 */
 const POLLUTION_ZONE_INTERACTION_ID = 'interaction.pollution_zone_01';
@@ -120,18 +127,24 @@ interface NpcEntity {
 }
 
 export class UrbanWastelandScene extends Phaser.Scene {
-  private backgroundLayer!: Phaser.GameObjects.Container;
-  private midgroundLayer!: Phaser.GameObjects.Container;
-  private interactiveLayer!: Phaser.GameObjects.Container;
+  // ── 2.5D 七层图层容器（规范 §2） ──
+  /** 天空层（scrollFactor 0.05）。 */
+  private skyLayer!: Phaser.GameObjects.Container;
+  /** 远景层 — 远景厂区/烟囱/塔架（scrollFactor 0.20）。 */
+  private farLayer!: Phaser.GameObjects.Container;
+  /** 中景层 — 废墟/厂房/管线/电杆（scrollFactor 0.48）。 */
+  private midLayer!: Phaser.GameObjects.Container;
+  /** 地面层 — 路面 + 障碍物理体（scrollFactor 1.0）。 */
+  private groundLayer!: Phaser.GameObjects.Container;
+  /** 前景层 — 草丛/管道/废墟遮挡（scrollFactor 1.10）。 */
   private foregroundLayer!: Phaser.GameObjects.Container;
-  private effectsLayer!: Phaser.GameObjects.Container;
 
   private player!: Player;
   private obstacles: Phaser.Physics.Arcade.StaticGroup = undefined!;
   private interactionZones: InteractionZone[] = [];
   private npcEntities: NpcEntity[] = [];
 
-  /** 背景矩形引用 — 用于视觉阶段变化。 */
+  /** 色调叠加矩形引用 — 用于视觉阶段变化（位于 sky 之上、far 之下）。 */
   private backgroundRect!: Phaser.GameObjects.Rectangle;
   /** 修复区域附近的植被装饰对象列表。 */
   private vegetationGraphics: Phaser.GameObjects.Image[] = [];
@@ -206,11 +219,23 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * preload — 统一加载主场景图片资源。
    *
    * 所有图片通过 sceneAssets 统一路径引入，纹理 key 集中定义。
+   * 2.5D 改造（规范 §10）：分层背景 5 个纹理进入 sceneAssets.backgrounds。
+   *
+   * 单个纹理加载失败不中断整个 preload — Phaser 会在 loaderror 事件中记录，
+   * create() 中通过 `this.textures.exists(key)` 防御性检查并回退到占位图形。
    */
   preload(): void {
-    this.load.image(SCENE_BG_TEXTURE, sceneAssets.backgrounds.industrialWasteland);
+    // 2.5D 分层背景（占位素材，正式美术阶段按 §13 顺序逐张替换）
+    this.load.image(SKY_TEXTURE, sceneAssets.backgrounds.sky);
+    this.load.image(FAR_CITY_TEXTURE, sceneAssets.backgrounds.farCity);
+    this.load.image(MID_BUILDINGS_TEXTURE, sceneAssets.backgrounds.midBuildings);
+    this.load.image(GROUND_OVERLAY_TEXTURE, sceneAssets.backgrounds.ground2_5d);
+    this.load.image(FOREGROUND_TEXTURE, sceneAssets.backgrounds.foreground);
+
+    // 地面平铺纹理（保留作为 ground 层的核心细节）
     this.load.image(GROUND_TILE_TEXTURE, sceneAssets.tiles.crackedGround);
-    this.load.image(DECOR_RUINS_TEXTURE, sceneAssets.decor.industrialRuinsStrip);
+
+    // 绿植装饰簇（NPC 周围、修复区域周围分布）
     this.load.image(DECOR_PLANT_TEXTURE, sceneAssets.decor.ruinPlantCluster);
 
     // 交互物件图片
@@ -235,84 +260,102 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.cleanupCompleted = false;
     this.isShutdown = false;
 
-    // 设置物理世界边界
-    this.physics.world.setBounds(0, 0, W, H);
+    // 设置物理世界边界 — 2.5D 纵深带：
+    // 玩家脚底（origin 0.5,1 时 body 顶边约为脚底上方 PLAYER_SIZE.height）限制在
+    // [WALKABLE_Y_MIN, WALKABLE_Y_MAX]，玩家无法走进背景"天上"。
+    // 边界按碰撞体计算：body 顶边 = 脚底 y - PLAYER_SIZE.height。
+    this.physics.world.setBounds(
+      0,
+      WALKABLE_Y_MIN - PLAYER_SIZE.height,
+      W,
+      WALKABLE_Y_MAX - WALKABLE_Y_MIN + PLAYER_SIZE.height,
+    );
 
-    // 创建分层容器
-    this.backgroundLayer = this.add.container(0, 0);
-    this.backgroundLayer.setDepth(0);
-    this.midgroundLayer = this.add.container(0, 0);
-    this.midgroundLayer.setDepth(10);
-    this.interactiveLayer = this.add.container(0, 0);
-    this.interactiveLayer.setDepth(20);
-    this.foregroundLayer = this.add.container(0, 0);
-    this.foregroundLayer.setDepth(30);
-    this.effectsLayer = this.add.container(0, 0);
-    this.effectsLayer.setDepth(40);
+    // ── 创建七层图层容器（规范 §2） ──
+    this.skyLayer = this.add.container(0, 0).setDepth(DEPTH_BACKGROUND).setScrollFactor(PARALLAX.sky);
+    this.farLayer = this.add.container(0, 0).setDepth(DEPTH_FAR).setScrollFactor(PARALLAX.far);
+    this.midLayer = this.add.container(0, 0).setDepth(DEPTH_DECOR).setScrollFactor(PARALLAX.mid);
+    this.groundLayer = this.add.container(0, 0).setDepth(DEPTH_GROUND).setScrollFactor(PARALLAX.ground);
+    // 玩法层（scrollFactor 1.0）— 容器为组织用，实体仍直接挂场景根以保证 Y-sort 生效。
+    this.add.container(0, 0).setDepth(DEPTH_ENTITY_BASE).setScrollFactor(PARALLAX.gameplay);
+    this.foregroundLayer = this.add.container(0, 0).setDepth(DEPTH_FOREGROUND).setScrollFactor(PARALLAX.foreground);
+    // 特效层（depth 3000）— 昼夜/天气控制器的预留挂载点；当前控制器在场景根直接添加。
+    this.add.container(0, 0).setDepth(DEPTH_FX).setScrollFactor(1);
 
-    // ── 第 0 层：远景背景 ──
-    if (this.textures.exists(SCENE_BG_TEXTURE)) {
-      const bgImage = this.add.image(W / 2, H / 2, SCENE_BG_TEXTURE);
-      // cover 缩放 — 覆盖整个世界但不严重变形
-      const scaleX = W / bgImage.width;
-      const scaleY = H / bgImage.height;
-      const scale = Math.max(scaleX, scaleY);
-      bgImage.setScale(scale);
-      bgImage.setDepth(DEPTH.background);
-      this.backgroundLayer.add(bgImage);
-      // 背景引用保留用于色调叠加（如有需要）
-      this.backgroundRect = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0);
-      this.backgroundLayer.add(this.backgroundRect);
+    // ── 第 0 层：天空 ──
+    if (this.textures.exists(SKY_TEXTURE)) {
+      const sky = this.add.image(W / 2, H / 2, SKY_TEXTURE);
+      // cover 缩放：覆盖世界宽（横向视差 ±640 → 32px 内偏移，纵向 ±360 → 18px 偏移）
+      const scale = Math.max(W / sky.width, H / sky.height);
+      sky.setScale(scale);
+      this.skyLayer.add(sky);
     } else {
-      this.backgroundRect = this.add.rectangle(W / 2, H / 2, W, H, 0x1a2a2e);
-      this.backgroundLayer.add(this.backgroundRect);
+      // 回退：浅灰蓝纯色背景
+      this.skyLayer.add(this.add.rectangle(W / 2, H / 2, W, H, 0x9fb4c4));
     }
+    // 视觉阶段 tint 矩形（位于 sky 之上、far 之下；与各 far/mid 平行，仅压暗天空色温）
+    this.backgroundRect = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0);
+    this.skyLayer.add(this.backgroundRect);
 
-    // 轻微暗色遮罩 — 保证前景可读性
-    const darkOverlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.2);
-    darkOverlay.setDepth(DEPTH.background + 0.1);
-    this.backgroundLayer.add(darkOverlay);
-
-    // ── 第 1 层：中景废墟装饰 ──
-    // industrial-ruins-strip.png 的 alpha 通道存在规则网格，渲染时产生棋盘格效果，已禁用。
-    if (RUINS_DECOR_ENABLED && this.textures.exists(DECOR_RUINS_TEXTURE)) {
-      const ruinsImg = this.add.image(W / 2, H * 0.45, DECOR_RUINS_TEXTURE);
-      // 缩放到场景宽度
-      const ruinsScale = W / ruinsImg.width;
-      ruinsImg.setScale(ruinsScale);
-      ruinsImg.setDepth(DEPTH.decor);
-      ruinsImg.setAlpha(0.6); // 降低透明度保证层次感和前景可读性
-      this.backgroundLayer.add(ruinsImg);
+    // ── 第 1 层：远景厂区/烟囱/塔架 ──
+    if (this.textures.exists(FAR_CITY_TEXTURE)) {
+      const far = this.add.image(W / 2, FAR_HORIZON_Y, FAR_CITY_TEXTURE);
+      far.setOrigin(0.5, 1); // 建筑底部对齐地平线
+      this.farLayer.add(far);
     } else if (DEBUG_HITBOX) {
-      // 仅调试时回退到矩形建筑轮廓
-      this.createPlaceholderBuildings();
+      // 调试占位：浅灰矩形条带
+      this.farLayer.add(this.add.rectangle(W / 2, FAR_HORIZON_Y, W, 200, 0xa8adb5, 0.6).setOrigin(0.5, 1));
     }
 
-    // ── 第 2 层：地面 / 平台纹理 ──
-    // 使用 tileSprite 平铺地面纹理，确保只占据 GROUND_VISUAL_HEIGHT 高度，不覆盖全屏
+    // ── 第 2 层：中景废墟/管线/电杆 ──
+    if (this.textures.exists(MID_BUILDINGS_TEXTURE)) {
+      const mid = this.add.image(W / 2, MID_BOTTOM_Y, MID_BUILDINGS_TEXTURE);
+      mid.setOrigin(0.5, 1);
+      this.midLayer.add(mid);
+    } else if (DEBUG_HITBOX) {
+      this.midLayer.add(this.add.rectangle(W / 2, MID_BOTTOM_Y, W, 260, 0x5a6b63, 0.6).setOrigin(0.5, 1));
+    }
+
+    // ── 第 3 层：地面 + 障碍物（scrollFactor=1） ──
+    const GROUND_BAND_HEIGHT = WORLD_BOUNDS.height - WALKABLE_Y_MIN;
     if (this.textures.exists(GROUND_TILE_TEXTURE)) {
       const groundTile = this.add.tileSprite(
         W / 2,
-        GROUND_TOP_Y + GROUND_VISUAL_HEIGHT / 2,
+        WALKABLE_Y_MIN + GROUND_BAND_HEIGHT / 2,
         W,
-        GROUND_VISUAL_HEIGHT,
+        GROUND_BAND_HEIGHT,
         GROUND_TILE_TEXTURE,
       );
-      groundTile.setDepth(DEPTH.ground);
-      this.midgroundLayer.add(groundTile);
+      this.groundLayer.add(groundTile);
     } else {
-      const ground = this.add.rectangle(W / 2, GROUND_TOP_Y + GROUND_VISUAL_HEIGHT / 2, W, GROUND_VISUAL_HEIGHT, 0x2a3535);
-      ground.setDepth(DEPTH.ground);
-      this.midgroundLayer.add(ground);
+      this.groundLayer.add(
+        this.add.rectangle(
+          W / 2,
+          WALKABLE_Y_MIN + GROUND_BAND_HEIGHT / 2,
+          W,
+          GROUND_BAND_HEIGHT,
+          0x2a3535,
+        ),
+      );
+    }
+    // 2.5D 地面覆盖图（占位阶段；正式美术阶段如启用此图可去掉 tileSprite）
+    if (this.textures.exists(GROUND_OVERLAY_TEXTURE)) {
+      const groundOverlay = this.add.image(W / 2, 0, GROUND_OVERLAY_TEXTURE);
+      groundOverlay.setOrigin(0.5, 0);
+      // 与 tileSprite 等高（从 WALKABLE_Y_MIN 起到世界底）
+      const overlayScale = GROUND_BAND_HEIGHT / groundOverlay.height;
+      groundOverlay.setScale(overlayScale);
+      groundOverlay.y = WALKABLE_Y_MIN;
+      this.groundLayer.add(groundOverlay);
     }
 
-    // ── 障碍物 — 仅 DEBUG_HITBOX 时显示可视化矩形 ──
+    // ── 障碍物 — 仅 DEBUG_HITBOX 时显示可视化矩形（scrollFactor 跟随 ground 容器 = 1） ──
     this.obstacles = this.physics.add.staticGroup();
     for (const obs of OBSTACLES) {
       const rect = this.add.rectangle(obs.x, obs.y, obs.width, obs.height, obs.color);
-      rect.setDepth(DEPTH.obstacles);
-      rect.setAlpha(DEBUG_HITBOX ? 0.6 : 0); // 正常模式下隐藏障碍物可视化
-      this.midgroundLayer.add(rect);
+      rect.setDepth(DEPTH_OBSTACLE);
+      rect.setAlpha(DEBUG_HITBOX ? 0.6 : 0);
+      this.groundLayer.add(rect);
       this.physics.add.existing(rect, true);
       const body = rect.body as Phaser.Physics.Arcade.StaticBody;
       body.setSize(obs.width, obs.height);
@@ -320,15 +363,28 @@ export class UrbanWastelandScene extends Phaser.Scene {
       this.obstacles.add(rect);
     }
 
+    // ── 第 5 层：前景遮挡 ──
+    if (this.textures.exists(FOREGROUND_TEXTURE)) {
+      const fg = this.add.image(W / 2, FOREGROUND_ANCHOR_Y, FOREGROUND_TEXTURE);
+      fg.setOrigin(0.5, 1); // 底边对齐锚点
+      this.foregroundLayer.add(fg);
+    } else if (DEBUG_HITBOX) {
+      this.foregroundLayer.add(
+        this.add.rectangle(140, H - 100, 280, 400, 0x3a3f44, 0.6),
+      );
+      this.foregroundLayer.add(
+        this.add.rectangle(W - 140, H - 100, 280, 400, 0x3a3f44, 0.6),
+      );
+    }
+
     // 绿植装饰簇 — 场景装饰，不参与任务判定
     this.createDecorPlants();
 
-    // ── 玩家 — 站立在地面上 ──
+    // ── 玩家 — 站立在可行走纵深带中部 ──
     const character = usePlayerStore.getState().character;
     const gender = character?.gender;
-    // 玩家脚底对齐地面顶部
-    this.player = new Player(this, W / 2, GROUND_TOP_Y, '生态修复员', gender ?? undefined);
-    this.interactiveLayer.add([this.player.gameObject]);
+    // 玩家脚底对齐纵深带中部；直接挂场景根（不放入任何 Container，保证 Y-sort 生效）
+    this.player = new Player(this, W / 2, (WALKABLE_Y_MIN + WALKABLE_Y_MAX) / 2, '生态修复员', gender ?? undefined);
 
     // 玩家与障碍物碰撞
     this.physics.add.collider(this.player.gameObject, this.obstacles);
@@ -365,7 +421,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
-      .setDepth(50);
+      .setDepth(DEPTH_UI);
     this.interactionHintText.setVisible(false);
 
     // 地图名称（固定在画面上方）
@@ -378,7 +434,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
-      .setDepth(50);
+      .setDepth(DEPTH_UI);
 
     // 摄像机
     this.cameras.main.setBounds(0, 0, W, H);
@@ -434,6 +490,26 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.updateInteractions();
     this.updateRestoration(delta);
     this.updateNpcLabels();
+    // 2.5D Y-sort 刷新（规范 §7）：玩家/NPC 脚底 y 决定深度，保证环境能正确遮挡。
+    // Player 内部已在 updateMovement 中刷新；此处统一刷新 NPC 视觉对象（静态，幂等）。
+    this.refreshEntityDepths();
+  }
+
+  /**
+   * 刷新所有 Gameplay 层实体的 Y-sort 深度（规范 §7）。
+   *
+   * 玩家视觉对象：Player.updateMovement 已每帧刷新。
+   * NPC 视觉对象：位置固定，但保留此方法以便未来 NPC 移动时无需修改 update。
+   * 植被 / 交互物：自身 updateDepth() 在 create 时已设置，运行时位置不变，无需每帧刷新。
+   */
+  private refreshEntityDepths(): void {
+    if (this.isShutdown || this.cleanupCompleted) return;
+    for (const npc of this.npcEntities) {
+      const obj = npc.gameObject;
+      if (obj && obj.scene) {
+        obj.setDepth(entityDepth(obj.y));
+      }
+    }
   }
 
   /**
@@ -559,58 +635,39 @@ export class UrbanWastelandScene extends Phaser.Scene {
     }
   }
 
-  private createPlaceholderBuildings(): void {
-    const buildingColors = [0x1a3538, 0x152a2d, 0x1f3a3e];
-    const { height: H } = WORLD_BOUNDS;
-    for (let i = 0; i < 8; i++) {
-      const x = 100 + i * 230;
-      const bHeight = 150 + ((i * 37) % 200);
-      const building = this.add.rectangle(
-        x,
-        H - 200 - bHeight / 2,
-        120,
-        bHeight,
-        buildingColors[i % buildingColors.length],
-      );
-      building.setDepth(DEPTH.decor);
-      this.backgroundLayer.add(building);
-    }
-  }
-
   /**
    * 创建绿植装饰簇 — 使用真实图片素材布置在场景适当位置。
    * 只作为装饰，不参与任务判定。
+   * 2.5D 改造：分布到可行走纵深带内错落站位，参与 Y-sort 遮挡；
+   * 直接挂场景根。
    */
   private createDecorPlants(): void {
     if (!this.textures.exists(DECOR_PLANT_TEXTURE)) return;
 
-    // 在生态巡查点、修复区域周围、地图边缘布置装饰
-    // 脚底对齐地面顶部
+    // 带内错落分布（前中后排），底部对齐
     const positions = [
-      { x: 200, y: GROUND_TOP_Y, scale: 0.35 },
-      { x: 550, y: GROUND_TOP_Y, scale: 0.3 },
-      { x: 1000, y: GROUND_TOP_Y, scale: 0.35 },
-      { x: 1600, y: GROUND_TOP_Y, scale: 0.3 },
-      { x: 150, y: GROUND_TOP_Y - 200, scale: 0.25 },
-      { x: 1780, y: GROUND_TOP_Y - 150, scale: 0.25 },
+      { x: 200, y: 730, scale: 0.3 },
+      { x: 550, y: 1010, scale: 0.35 },
+      { x: 1000, y: 745, scale: 0.3 },
+      { x: 1600, y: 990, scale: 0.32 },
+      { x: 120, y: 950, scale: 0.28 },
+      { x: 1820, y: 780, scale: 0.26 },
     ];
 
     for (const pos of positions) {
       const plant = this.add.image(pos.x, pos.y, DECOR_PLANT_TEXTURE);
       plant.setScale(pos.scale);
       plant.setOrigin(0.5, 1); // 底部对齐
-      plant.setDepth(DEPTH.decor);
+      plant.setDepth(entityDepth(pos.y)); // Y-sort
       plant.setAlpha(0.7);
-      this.backgroundLayer.add(plant);
     }
   }
 
   private createInteractionObjects(): void {
     for (const config of INTERACTION_OBJECTS) {
       const zone = new InteractionZone(this, config);
-      // 设置深度层级
-      const go = zone.getGameObject();
-      if (go) go.setDepth(DEPTH.objects);
+      // Y-sort 深度（构造器内已设置，此处显式调用以保证一致）
+      zone.updateDepth();
       this.interactionZones.push(zone);
     }
   }
@@ -652,7 +709,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
         }
         visualObj = rect;
       }
-      this.interactiveLayer.add(visualObj);
+      // 直接挂场景根 + Y-sort 深度（不放入 Container，保证深度排序生效）
+      visualObj.setDepth(entityDepth(config.y));
 
       // 物理体 — 使用不可见矩形用于距离检测，不阻挡玩家
       const physBody = this.add.rectangle(
@@ -663,7 +721,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
         0x000000,
         0,
       );
-      this.interactiveLayer.add(physBody);
+      physBody.setDepth(DEPTH_OBSTACLE);
       this.physics.add.existing(physBody, true);
       const body = physBody.body as Phaser.Physics.Arcade.StaticBody;
       body.setSize(config.width, config.height);
@@ -689,7 +747,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
         },
       );
       label.setOrigin(0.5);
-      this.interactiveLayer.add(label);
+      label.setDepth(DEPTH_ENTITY_LABEL);
 
       this.npcEntities.push({
         config,
@@ -1322,8 +1380,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
         veg.setScale(pos.scale);
         veg.setOrigin(0.5, 1); // 底部对齐地面
         veg.setAlpha(0.85);
-        veg.setDepth(DEPTH.objects);
-        this.interactiveLayer.add(veg);
+        veg.setDepth(entityDepth(pos.y)); // Y-sort，直接挂场景根
         this.vegetationGraphics.push(veg);
       }
     }

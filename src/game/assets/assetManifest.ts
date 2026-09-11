@@ -31,6 +31,12 @@ export const imageAssets = {
 export const sceneAssets = {
   backgrounds: {
     industrialWasteland: '/assets/images/backgrounds/industrial-wasteland-bg.png',
+    // 2.5D 改造：分层背景（规范 §10）
+    sky: '/assets/images/backgrounds/wasteland-sky.png',
+    farCity: '/assets/images/backgrounds/wasteland-far-city.png',
+    midBuildings: '/assets/images/backgrounds/wasteland-mid-buildings.png',
+    ground2_5d: '/assets/images/backgrounds/wasteland-ground.png',
+    foreground: '/assets/images/backgrounds/wasteland-foreground.png',
   },
   tiles: {
     crackedGround: '/assets/images/tiles/cracked-ground-tile.png',

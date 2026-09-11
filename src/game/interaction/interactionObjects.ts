@@ -2,10 +2,11 @@
  * 占位交互对象配置。
  *
  * 位置和交互范围集中定义在此处，不散落在场景代码中。
+ * 2.5D 改造：y 值在可行走纵深带 [WALKABLE_Y_MIN=700, WALKABLE_Y_MAX=1040] 内
+ * 错落分布（前中后排），配合 Y-sort 深度产生前后遮挡关系。
  */
 
 import type { InteractionObjectConfig } from './interactionTypes';
-import { GROUND_TOP_Y } from '@/game/config/movementConfig';
 
 /** Phaser 纹理 key 常量 — 在 preload 中加载。 */
 export const SCENE_TEXTURE_KEYS = {
@@ -21,7 +22,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'pollution',
     displayName: '污染物堆',
     x: 650,
-    y: GROUND_TOP_Y,
+    y: 880,
     width: 64,
     height: 64,
     interactionRange: 90,
@@ -36,7 +37,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'monitoring_device',
     displayName: '环境监测装置',
     x: 1500,
-    y: GROUND_TOP_Y,
+    y: 940,
     width: 48,
     height: 48,
     interactionRange: 80,
@@ -50,7 +51,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'monitoring_device',
     displayName: '排水设施',
     x: 1150,
-    y: GROUND_TOP_Y,
+    y: 900,
     width: 48,
     height: 48,
     interactionRange: 80,
@@ -64,7 +65,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'pollution',
     displayName: '暴雨冲散垃圾',
     x: 900,
-    y: GROUND_TOP_Y,
+    y: 920,
     width: 48,
     height: 48,
     interactionRange: 80,
@@ -76,7 +77,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'damaged_environment',
     displayName: '受损环境点',
     x: 450,
-    y: GROUND_TOP_Y,
+    y: 800,
     width: 48,
     height: 48,
     interactionRange: 80,
@@ -88,7 +89,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'damaged_environment',
     displayName: '受损环境点',
     x: 1350,
-    y: GROUND_TOP_Y,
+    y: 920,
     width: 48,
     height: 48,
     interactionRange: 80,
@@ -100,7 +101,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'ecology_patrol_point',
     displayName: '生态巡查点',
     x: 250,
-    y: GROUND_TOP_Y,
+    y: 760,
     width: 48,
     height: 48,
     interactionRange: 80,
@@ -112,7 +113,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'ecology_patrol_point',
     displayName: '生态巡查点',
     x: 1050,
-    y: GROUND_TOP_Y,
+    y: 880,
     width: 48,
     height: 48,
     interactionRange: 80,
@@ -124,7 +125,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'ecology_patrol_point',
     displayName: '生态巡查点',
     x: 1650,
-    y: GROUND_TOP_Y,
+    y: 860,
     width: 48,
     height: 48,
     interactionRange: 80,
@@ -136,7 +137,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'fog_hazard_point',
     displayName: '雾天危险点',
     x: 800,
-    y: GROUND_TOP_Y,
+    y: 820,
     width: 48,
     height: 48,
     interactionRange: 80,
@@ -148,7 +149,7 @@ export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
     type: 'fog_hazard_point',
     displayName: '雾天危险点',
     x: 1550,
-    y: GROUND_TOP_Y,
+    y: 960,
     width: 48,
     height: 48,
     interactionRange: 80,

@@ -38,5 +38,18 @@ export const INTERACTION_COOLDOWN_MS = 300;
  */
 export const DEBUG_HITBOX = false;
 
-/** 地面顶部 Y 坐标（世界坐标系）。物体脚底应对齐此线。 */
+/** 地面顶部 Y 坐标（世界坐标系）。物体脚底应对齐此线。
+ * 2.5D 改造后仅作为地面纹理前缘参考；实体实际分布见 WALKABLE_Y_MIN/MAX。
+ */
 export const GROUND_TOP_Y = 880;
+
+/** 可行走纵深带上边界（世界坐标系）— 玩家脚底可到达的最小 y（靠近画面上方/远景）。
+ * 对齐背景图地面起始位置（约世界高度 65%）。
+ */
+export const WALKABLE_Y_MIN = 700;
+
+/** 可行走纵深带下边界（世界坐标系）— 玩家脚底可到达的最大 y（靠近画面下方/前景）。 */
+export const WALKABLE_Y_MAX = 1040;
+
+/** 可行走纵深带高度（像素）。 */
+export const WALKABLE_BAND_HEIGHT = WALKABLE_Y_MAX - WALKABLE_Y_MIN;

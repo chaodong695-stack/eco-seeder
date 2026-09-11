@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { PLAYER_SIZE, PLAYER_SPEED } from '@/game/config/movementConfig';
 import { DEBUG_HITBOX } from '@/game/config/movementConfig';
+import { entityDepth, DEPTH_ENTITY_LABEL } from '@/game/config/depthConfig';
 import { computeMovementVector, type MovementInput } from './movementVector';
 
 /** 玩家侧视图纹理 key — 在 Scene preload 中加载。 */
@@ -75,6 +76,9 @@ export class Player {
       padding: { x: 4, y: 2 },
     });
     this.label.setOrigin(0.5);
+    this.label.setDepth(DEPTH_ENTITY_LABEL);
+    // 初始深度 — 与 updateMovement 中的 Y-sort 规则一致
+    this.gameObject.setDepth(entityDepth(y));
   }
 
   /**
@@ -104,9 +108,10 @@ export class Player {
     // 更新标签位置 — 角色原点在脚底，标签在头顶上方
     this.label.setPosition(this.gameObject.x, this.gameObject.y - PLAYER_DISPLAY_HEIGHT - 10);
 
-    // 深度排序 — 基于 Y 坐标
-    this.gameObject.setDepth(this.gameObject.y);
-    this.label.setDepth(this.gameObject.y + 1);
+    // 深度排序 — Y-sort：深度 = ENTITY_BASE + 脚底 y，实现 2.5D 前后遮挡。
+    // 注意：本对象必须直接挂载在场景根（不能放入 Container），否则深度排序失效。
+    this.gameObject.setDepth(entityDepth(this.gameObject.y));
+    this.label.setDepth(DEPTH_ENTITY_LABEL);
   }
 
   destroy(): void {

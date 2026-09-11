@@ -9,6 +9,7 @@
 
 import Phaser from 'phaser';
 import type { WeatherType } from '@/domain/weather/weatherTypes';
+import { DEPTH_FX } from '@/game/config/depthConfig';
 
 /** 天气视觉配置。 */
 interface WeatherVisualConfig {
@@ -70,7 +71,7 @@ export class WeatherVisualController {
         config.overlayColor,
         config.overlayAlpha,
       );
-      this.overlay.setDepth(36);
+      this.overlay.setDepth(DEPTH_FX);
       this.overlay.setScrollFactor(0);
     } else {
       this.overlay.setFillStyle(config.overlayColor, config.overlayAlpha);
@@ -122,7 +123,7 @@ export class WeatherVisualController {
     gfx.destroy();
 
     particles.setTexture('rain_particle');
-    particles.setDepth(37);
+    particles.setDepth(DEPTH_FX);
     particles.setScrollFactor(0);
 
     this.particleEmitter = particles;
@@ -144,7 +145,7 @@ export class WeatherVisualController {
         0xcccccc,
         0.12 + i * 0.04,
       );
-      fogRect.setDepth(38);
+      fogRect.setDepth(DEPTH_FX);
       fogRect.setScrollFactor(0);
 
       // 低速移动 tween

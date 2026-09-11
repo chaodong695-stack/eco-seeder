@@ -9,6 +9,7 @@
 
 import Phaser from 'phaser';
 import type { DayPhase } from '@/domain/time/timeTypes';
+import { DEPTH_FX } from '@/game/config/depthConfig';
 
 /** 昼夜阶段视觉配置。 */
 interface DayPhaseVisualConfig {
@@ -61,7 +62,7 @@ export class DayNightVisualController {
         config.tintColor,
         config.tintAlpha,
       );
-      this.overlay.setDepth(35);
+      this.overlay.setDepth(DEPTH_FX);
       this.overlay.setScrollFactor(0);
       this.currentPhase = phase;
       return;
