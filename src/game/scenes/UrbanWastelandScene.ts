@@ -76,6 +76,7 @@ import { STAGE_ONE_VISUALS } from '@/game/visual/stageOneVisualPolicy';
 import { DECOR_PLACEMENTS, MID_LAYER_PLACEMENT } from '@/content/maps/urbanWastelandLayout';
 import { resolveFocus } from '@/game/visual/labelPolicy';
 import { TaskMarker } from '@/game/visual/TaskMarker';
+import { shouldLoad } from '@/game/assets/assetLoadPolicy';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
 
@@ -233,8 +234,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
   preload(): void {
     // 2.5D 分层背景（占位素材，正式美术阶段按 §13 顺序逐张替换）
     this.load.image(SKY_TEXTURE, sceneAssets.backgrounds.sky);
-    this.load.image(FAR_CITY_TEXTURE, sceneAssets.backgrounds.farCity);
-    this.load.image(MID_BUILDINGS_TEXTURE, sceneAssets.backgrounds.midBuildings);
+    if (shouldLoad('optional', this.scale.width)) {
+      this.load.image(FAR_CITY_TEXTURE, sceneAssets.backgrounds.farCity);
+      this.load.image(MID_BUILDINGS_TEXTURE, sceneAssets.backgrounds.midBuildings);
+    }
     this.load.image(GROUND_OVERLAY_TEXTURE, sceneAssets.backgrounds.ground2_5d);
     this.load.image(FOREGROUND_TEXTURE, sceneAssets.backgrounds.foreground);
 
@@ -242,7 +245,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.load.image(GROUND_TILE_TEXTURE, sceneAssets.tiles.crackedGround);
 
     // 绿植装饰簇（NPC 周围、修复区域周围分布）
-    this.load.image(DECOR_PLANT_TEXTURE, sceneAssets.decor.ruinPlantCluster);
+    if (shouldLoad('optional', this.scale.width)) {
+      this.load.image(DECOR_PLANT_TEXTURE, sceneAssets.decor.ruinPlantCluster);
+    }
 
     // 交互物件图片
     this.load.image(SCENE_TEXTURE_KEYS.pollutionPileLarge, sceneAssets.objects.pollutionPileLarge);

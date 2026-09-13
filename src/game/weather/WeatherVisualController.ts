@@ -10,6 +10,8 @@
 import Phaser from 'phaser';
 import type { WeatherType } from '@/domain/weather/weatherTypes';
 import { DEPTH_FX } from '@/game/config/depthConfig';
+import { RAIN_LAYERS, type RainLayer, type EffectsQuality, layerBudget } from './rainConfig';
+import { FOG_POLICY } from '@/game/visual/atmospherePolicy';
 
 /** 天气视觉配置。 */
 interface WeatherVisualConfig {
@@ -35,7 +37,8 @@ export class WeatherVisualController {
   private scene: Phaser.Scene;
   private overlay: Phaser.GameObjects.Rectangle | null = null;
   private currentWeather: WeatherType | null = null;
-  private particleEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  private rainEmitters = new Map<RainLayer, Phaser.GameObjects.Particles.ParticleEmitter>();
+  private effectsQuality: EffectsQuality = 'medium';
   private fogRects: Phaser.GameObjects.Rectangle[] = [];
   private fogTweens: Phaser.Tweens.Tween[] = [];
   private flashTimer: Phaser.Time.TimerEvent | null = null;
@@ -79,7 +82,7 @@ export class WeatherVisualController {
 
     // 创建粒子（雨）
     if (config.particleCount > 0) {
-      this.createRainParticles(config);
+      this.createRainParticles();
     }
 
     // 创建雾层
@@ -98,36 +101,37 @@ export class WeatherVisualController {
   /**
    * 创建雨粒子。
    */
-  private createRainParticles(config: WeatherVisualConfig): void {
+  private createRainParticles(): void {
+    this.destroyRainParticles();
+    if (!this.scene.textures.exists('rain_particle')) {
+      const gfx = this.scene.make.graphics({ x: 0, y: 0 }, false);
+      gfx.fillStyle(0xffffff, 1); gfx.fillRect(0, 0, 2, 12); gfx.generateTexture('rain_particle', 2, 12); gfx.destroy();
+    }
     const { width } = this.scene.scale;
-
-    const particles = this.scene.add.particles(0, 0, undefined as never, {
-      x: { min: 0, max: width },
-      y: -20,
-      quantity: config.particleCount,
-      frequency: 50,
-      lifespan: config.particleLifespan,
-      speedY: { min: config.particleSpeed * 0.8, max: config.particleSpeed },
-      speedX: { min: -80, max: -40 },
-      scale: { start: config.particleSize, end: config.particleSize * 0.5 },
-      tint: config.particleColor,
-      alpha: { start: 0.7, end: 0.3 },
-      emitting: true,
-    });
-
-    // Use Graphics texture for particles
-    const gfx = this.scene.make.graphics({ x: 0, y: 0 }, false);
-    gfx.fillStyle(0xffffff, 1);
-    gfx.fillRect(0, 0, 2, 12);
-    gfx.generateTexture('rain_particle', 2, 12);
-    gfx.destroy();
-
-    particles.setTexture('rain_particle');
-    particles.setDepth(DEPTH_FX);
-    particles.setScrollFactor(0);
-
-    this.particleEmitter = particles;
+    for (const [layer, cfg] of Object.entries(RAIN_LAYERS) as [RainLayer, typeof RAIN_LAYERS[RainLayer]][]) {
+      const emitter = this.scene.add.particles(0, 0, 'rain_particle', {
+        x: { min: 0, max: width }, y: -24, frequency: cfg.frequency, lifespan: cfg.lifespan,
+        maxAliveParticles: layerBudget(layer, this.effectsQuality), quantity: 1,
+        speedY: { min: cfg.speedY[0], max: cfg.speedY[1] }, speedX: { min: cfg.speedX[0], max: cfg.speedX[1] },
+        scale: { start: cfg.size, end: cfg.size * 0.45 }, alpha: { start: cfg.alpha[0], end: cfg.alpha[1] }, emitting: true,
+      }).setDepth(cfg.depth).setScrollFactor(cfg.scrollFactor);
+      this.rainEmitters.set(layer, emitter);
+    }
   }
+
+  private destroyRainParticles(): void {
+    for (const emitter of this.rainEmitters.values()) if (emitter.scene) emitter.destroy();
+    this.rainEmitters.clear();
+  }
+
+  setEffectsQuality(quality: EffectsQuality): void {
+    if (this.effectsQuality === quality) return;
+    this.effectsQuality = quality;
+    if (this.currentWeather === 'light_rain' || this.currentWeather === 'heavy_rain') this.createRainParticles();
+  }
+
+  getEffectsQuality(): EffectsQuality { return this.effectsQuality; }
+  getRainEmitterCount(): number { return this.rainEmitters.size; }
 
   /**
    * 创建雾层 — 低速移动的半透明矩形。
@@ -142,8 +146,8 @@ export class WeatherVisualController {
         height * (0.3 + i * 0.2),
         width * 1.5,
         height * 0.25,
-        0xcccccc,
-        0.12 + i * 0.04,
+        i === 0 ? FOG_POLICY.far.color : i === 1 ? FOG_POLICY.mid.color : FOG_POLICY.foreground.color,
+        i === 0 ? FOG_POLICY.far.alpha : i === 1 ? FOG_POLICY.mid.alpha : FOG_POLICY.foreground.alpha,
       );
       fogRect.setDepth(DEPTH_FX);
       fogRect.setScrollFactor(0);
@@ -187,13 +191,8 @@ export class WeatherVisualController {
    * 停止当前天气效果。
    */
   private stopCurrentWeather(): void {
-    // 停止粒子
-    if (this.particleEmitter && this.particleEmitter.scene) {
-      this.particleEmitter.destroy();
-    }
-    this.particleEmitter = null;
+    this.destroyRainParticles();
 
-    // 停止雾层
     for (const tween of this.fogTweens) {
       tween.stop();
     }
