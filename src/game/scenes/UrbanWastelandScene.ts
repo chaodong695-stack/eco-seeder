@@ -74,6 +74,8 @@ import type { WeatherType } from '@/domain/weather/weatherTypes';
 import { sceneAssets } from '@/game/assets/assetManifest';
 import { STAGE_ONE_VISUALS } from '@/game/visual/stageOneVisualPolicy';
 import { DECOR_PLACEMENTS, MID_LAYER_PLACEMENT } from '@/content/maps/urbanWastelandLayout';
+import { resolveFocus } from '@/game/visual/labelPolicy';
+import { TaskMarker } from '@/game/visual/TaskMarker';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
 
@@ -162,6 +164,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
   /** 标记最近的是否为 NPC。 */
   private nearestIsNpc: boolean = false;
   private nearestNpcId: string | null = null;
+  private focusCanInteract = false;
+  private taskMarkers = new Map<string, TaskMarker>();
 
   /** UI Store 输入模式订阅取消函数。 */
   private unsubInputMode: (() => void) | null = null;
@@ -569,6 +573,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.interactionZones = [];
 
     // 销毁 NPC
+    for (const marker of this.taskMarkers.values()) marker.destroy();
+    this.taskMarkers.clear();
     this.npcEntities.forEach((npc) => {
       npc.label.destroy();
       npc.physBody.destroy();
@@ -660,12 +666,24 @@ export class UrbanWastelandScene extends Phaser.Scene {
     }
   }
 
+  private markerKind(type: string): 'repair' | 'inspect' | 'patrol' | 'hazard' {
+    if (type === 'damaged_environment' || type === 'restoration_zone') return 'repair';
+    if (type === 'ecology_patrol_point') return 'patrol';
+    if (type === 'fog_hazard_point') return 'hazard';
+    return 'inspect';
+  }
+
   private createInteractionObjects(): void {
     for (const config of INTERACTION_OBJECTS) {
       const zone = new InteractionZone(this, config);
       // Y-sort 深度（构造器内已设置，此处显式调用以保证一致）
       zone.updateDepth();
       this.interactionZones.push(zone);
+      const kind = this.markerKind(config.type);
+      const marker = new TaskMarker(this);
+      marker.setState(config.x, config.y - config.height / 2 - 14, kind, false, 0);
+      marker.setVisible(zone.visualVisible);
+      this.taskMarkers.set(config.id, marker);
     }
   }
 
@@ -745,6 +763,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       );
       label.setOrigin(0.5);
       label.setDepth(DEPTH_ENTITY_LABEL);
+      label.setVisible(false);
 
       this.npcEntities.push({
         config,
@@ -816,55 +835,23 @@ export class UrbanWastelandScene extends Phaser.Scene {
     const playerX = this.player.gameObject.x;
     const playerY = this.player.gameObject.y;
     const currentWeather = useWorldStore.getState().getDisplayWeather();
-
-    // 检查交互对象
-    let nearestAvailable: InteractionZone | null = null;
+    const candidates = [] as Array<{ id: string; distance: number; range: number; eligible: boolean; priority: number }>;
     let pollutionZoneInRange = false;
+
     for (const zone of this.interactionZones) {
-      const changed = zone.checkAvailability(playerX, playerY);
-      if (changed) {
-        if (zone.available) {
-          gameBridge.emit('INTERACTION_AVAILABLE', {
-            objectId: zone.config.id,
-            displayName: zone.config.displayName,
-            type: zone.config.type,
-            hint: '按 E 交互',
-          });
-        } else {
-          gameBridge.emit('INTERACTION_UNAVAILABLE', {
-            objectId: zone.config.id,
-          });
-        }
-      }
-      // 天气门控 — 排水设施在非雨天气不显示交互提示
-      if (zone.available && zone.config.id === 'interaction.drainage_facility_01') {
-        if (currentWeather !== 'light_rain' && currentWeather !== 'heavy_rain') {
-          // 天气条件不满足，不作为可交互对象
-          continue;
-        }
-      }
-      // 天气门控 — 雾天危险点在非雾天不显示交互提示
-      if (zone.available && (zone.config.id === 'interaction.fog_hazard_01' || zone.config.id === 'interaction.fog_hazard_02')) {
-        if (currentWeather !== 'fog') {
-          continue;
-        }
-      }
-      if (zone.available && !nearestAvailable) {
-        nearestAvailable = zone;
-      }
-      // 追踪污染物堆是否在范围内
-      if (zone.available && zone.config.id === POLLUTION_ZONE_INTERACTION_ID) {
-        pollutionZoneInRange = true;
-      }
+      zone.checkAvailability(playerX, playerY);
+      const dx = playerX - zone.config.x;
+      const dy = playerY - zone.config.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const weatherEligible = zone.config.id !== 'interaction.drainage_facility_01'
+        || currentWeather === 'light_rain' || currentWeather === 'heavy_rain';
+      const fogEligible = !zone.config.id.startsWith('interaction.fog_hazard_') || currentWeather === 'fog';
+      const eligible = zone.available && weatherEligible && fogEligible;
+      candidates.push({ id: zone.config.id, distance, range: zone.config.interactionRange, eligible, priority: zone.config.id === POLLUTION_ZONE_INTERACTION_ID ? 1 : 0 });
+      if (zone.available && zone.config.id === POLLUTION_ZONE_INTERACTION_ID) pollutionZoneInRange = true;
     }
+    this.restorationController?.setInRange(pollutionZoneInRange);
 
-    // 更新修复控制器的范围状态
-    if (this.restorationController) {
-      this.restorationController.setInRange(pollutionZoneInRange);
-    }
-
-    // 检查 NPC 交互范围
-    let nearestNpc: NpcEntity | null = null;
     for (const npc of this.npcEntities) {
       const dx = playerX - npc.config.x;
       const dy = playerY - npc.config.y;
@@ -872,68 +859,48 @@ export class UrbanWastelandScene extends Phaser.Scene {
       const wasAvailable = npc.isAvailable;
       npc.isAvailable = distance <= npc.config.interactionRange;
       if (npc.isAvailable !== wasAvailable) {
-        if (npc.isAvailable) {
-          gameBridge.emit('INTERACTION_AVAILABLE', {
-            objectId: npc.config.id,
-            displayName: npc.config.displayName,
-            type: 'npc_placeholder',
-            hint: '按 E 对话',
-          });
-        } else {
-          gameBridge.emit('INTERACTION_UNAVAILABLE', {
-            objectId: npc.config.id,
-          });
-        }
+        gameBridge.emit(npc.isAvailable ? 'INTERACTION_AVAILABLE' : 'INTERACTION_UNAVAILABLE', npc.isAvailable
+          ? { objectId: npc.config.id, displayName: npc.config.displayName, type: 'npc_placeholder', hint: '? E ??' }
+          : { objectId: npc.config.id });
       }
-      if (npc.isAvailable && !nearestNpc) {
-        nearestNpc = npc;
-      }
+      candidates.push({ id: npc.config.id, distance, range: npc.config.interactionRange, eligible: npc.isAvailable, priority: 2 });
     }
 
-    // 更新提示文本 — 修复中优先显示修复提示
+    const focus = resolveFocus(candidates, this.nearestInteractionId);
+    const previousId = this.nearestInteractionId;
+    this.nearestInteractionId = focus.id;
+    this.focusCanInteract = focus.canInteract;
+    const focusedNpc = this.npcEntities.find((npc) => npc.config.id === focus.id);
+    this.nearestIsNpc = Boolean(focusedNpc);
+    this.nearestNpcId = focusedNpc?.config.id ?? null;
+
+    for (const zone of this.interactionZones) {
+      zone.setLabelVisible(zone.config.id === focus.id);
+      const marker = this.taskMarkers.get(zone.config.id);
+      if (marker) {
+        marker.setState(zone.config.x, zone.config.y - zone.config.height / 2 - 14, this.markerKind(zone.config.type), zone.config.id === focus.id, 0);
+        marker.setVisible(zone.visualVisible);
+      }
+    }
+    for (const npc of this.npcEntities) npc.label.setVisible(npc.config.id === focus.id && !useUIStore.getState().isNpcDialogOpen);
+
+    if (focus.id && focus.id !== previousId && focus.canInteract) {
+      const npc = this.npcEntities.find((item) => item.config.id === focus.id);
+      const zone = this.interactionZones.find((item) => item.config.id === focus.id);
+      gameBridge.emit('INTERACTION_AVAILABLE', npc
+        ? { objectId: npc.config.id, displayName: npc.config.displayName, type: 'npc_placeholder', hint: '? E ??' }
+        : { objectId: zone!.config.id, displayName: zone!.config.displayName, type: zone!.config.type, hint: '? E ??' });
+    } else if (!focus.id && previousId) {
+      gameBridge.emit('INTERACTION_UNAVAILABLE', { objectId: previousId });
+    }
+
+    // Phaser ????????????React InteractionPrompt ???????
+    this.interactionHintText.setVisible(false);
     if (this.restorationController) {
-      const restorationStatus = this.restorationController.getStatus();
-      if (restorationStatus === 'in_progress' || restorationStatus === 'interrupted') {
-        // 修复进行中或中断时，显示修复相关提示
-        const hint = this.restorationController.getInteractionHint();
-        this.interactionHintText.setText(hint);
-        this.interactionHintText.setVisible(true);
-        this.nearestInteractionId = POLLUTION_ZONE_INTERACTION_ID;
-        this.nearestIsNpc = false;
-        this.nearestNpcId = null;
-        return;
+      const status = this.restorationController.getStatus();
+      if ((status === 'in_progress' || status === 'interrupted') && focus.id === POLLUTION_ZONE_INTERACTION_ID) {
+        this.interactionHintText.setText(this.restorationController.getInteractionHint());
       }
-    }
-
-    // NPC 优先于交互对象
-    if (nearestNpc) {
-      this.nearestInteractionId = nearestNpc.config.id;
-      this.nearestIsNpc = true;
-      this.nearestNpcId = nearestNpc.config.id;
-      this.interactionHintText.setText(
-        `${nearestNpc.config.displayName} — 按 E 对话`,
-      );
-      this.interactionHintText.setVisible(true);
-    } else if (nearestAvailable) {
-      // 根据修复状态和任务状态决定提示文本
-      let hint: string;
-      const display = nearestAvailable.config.displayName;
-      if (nearestAvailable.config.id === POLLUTION_ZONE_INTERACTION_ID) {
-        // 污染物堆 — 显示每日任务相关提示
-        hint = this.getPollutionZoneHint();
-      } else {
-        hint = '按 E 交互';
-      }
-      this.nearestInteractionId = nearestAvailable.config.id;
-      this.nearestIsNpc = false;
-      this.nearestNpcId = null;
-      this.interactionHintText.setText(`${display} — ${hint}`);
-      this.interactionHintText.setVisible(true);
-    } else {
-      this.nearestInteractionId = null;
-      this.nearestIsNpc = false;
-      this.nearestNpcId = null;
-      this.interactionHintText.setVisible(false);
     }
   }
 
@@ -945,29 +912,6 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * - 已接取且未完成 → 按住 E 清理
    * - 已完成 → 已清理
    */
-  private getPollutionZoneHint(): string {
-    const restorationStatus = this.restorationController?.getStatus();
-    if (restorationStatus === 'in_progress') return '正在清理污染物堆';
-    if (restorationStatus === 'completed') return '污染物堆 — 已完成清理';
-    if (restorationStatus === 'interrupted') return '清理已暂停 — 按住 E 继续';
-
-    // 检查每日任务状态 — 通过 objectiveType 查找
-    const wasteTask = useDailyTaskStore.getState().tasks.find((t) => {
-      const def = findDailyTaskById(t.taskId);
-      return def?.objectiveType === 'collect_waste';
-    });
-
-    if (!wasteTask || wasteTask.status === 'available') {
-      return '污染物堆 — 请先向林工接取今日清理任务';
-    }
-
-    if (wasteTask.status === 'completed') {
-      return '污染物堆 — 已完成清理';
-    }
-
-    // active 或 waiting_condition
-    return '污染物堆 — 按住 E 清理';
-  }
 
   /**
    * 每帧更新修复行为。
@@ -991,7 +935,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
    */
   private handleEKeyDown(): void {
     // 修复中或非 gameplay 模式时，禁止检查交互
-    if (this.inputMode !== 'gameplay') return;
+    if (this.inputMode !== 'gameplay' || !this.focusCanInteract) return;
 
     // 污染物堆交互 — 由每日任务状态控制
     if (

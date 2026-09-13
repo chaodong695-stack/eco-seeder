@@ -76,6 +76,7 @@ export class InteractionZone {
     });
     this.label.setOrigin(0.5);
     this.label.setDepth(DEPTH_ENTITY_LABEL);
+    this.label.setVisible?.(false);
     this.shadow = new ContactShadow(scene, config.x, config.y - 2, Math.max(28, config.width * 0.8), 10);
     // 初始深度 — Y-sort（视觉对象直接挂场景根）
     this.updateDepth();
@@ -119,6 +120,7 @@ export class InteractionZone {
    */
   forceUnavailable(): void {
     this.isAvailable = false;
+    this.setLabelVisible(false);
   }
 
   /**
@@ -231,7 +233,7 @@ export class InteractionZone {
       this.visualObject.setVisible(visible);
       this.visualObject.setActive(visible);
     }
-    if (this.label?.scene) this.label.setVisible(visible);
+    if (this.label?.scene) this.label.setVisible?.(visible && this.isAvailable);
     this.shadow.sync(this.config.x, this.config.y, visible ? 0.32 : 0);
   }
   /**
@@ -241,6 +243,11 @@ export class InteractionZone {
    * 直接销毁 Text 的内部 texture/frame/canvas，而 wrapper 尚未标记 destroyed。
    * 必须验证 Text 仍属于当前有效 Scene 且未被 Phaser 内部销毁。
    */
+  setLabelVisible(visible: boolean): void {
+    if (this.destroyed || !this.label?.scene) return;
+    this.label.setVisible?.(visible);
+  }
+
   setLabelText(text: string): void {
     if (this.destroyed || !this.label) return;
     // 验证 label 尚未被 Phaser 内部销毁，且 Scene 仍然活跃
@@ -249,6 +256,10 @@ export class InteractionZone {
   }
 
   /** 是否已销毁。 */
+  get visualVisible(): boolean {
+    return Boolean(this.visualObject?.visible && this.visualObject?.active);
+  }
+
   get isDestroyed(): boolean {
     return this.destroyed;
   }
