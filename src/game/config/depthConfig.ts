@@ -35,6 +35,11 @@ export const DEPTH_ENTITY_BASE = 100;
  */
 export const DEPTH_FOREGROUND = 1200;
 
+/** 地面接触阴影层 — 位于地面之上、实体之下。 */
+export const DEPTH_REFLECTION = 40;
+export const DEPTH_CONTACT_SHADOW = 50;
+export const DEPTH_TASK_MARKER = 1900;
+
 /** 实体标签层 — NPC / 交互物文字标签，常驻可读不被遮挡。 */
 export const DEPTH_ENTITY_LABEL = 2000;
 
@@ -52,4 +57,16 @@ export const DEPTH_UI = 5000;
  */
 export function entityDepth(footY: number): number {
   return DEPTH_ENTITY_BASE + footY;
+}
+
+import type { SceneObjectRole } from '@/game/visual/sceneObjectTypes';
+export function getSceneDepth(role: SceneObjectRole, baseY: number): number {
+  switch (role) {
+    case 'far': return DEPTH_FAR;
+    case 'mid': return DEPTH_DECOR;
+    case 'ground': return DEPTH_GROUND;
+    case 'entity': return entityDepth(baseY);
+    case 'foregroundCover': return DEPTH_FOREGROUND;
+    case 'taskMarker': return DEPTH_TASK_MARKER;
+  }
 }

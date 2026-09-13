@@ -72,6 +72,8 @@ import { isWeatherConditionMet } from '@/domain/tasks/dailyTaskConditionResolver
 import type { DayPhase } from '@/domain/time/timeTypes';
 import type { WeatherType } from '@/domain/weather/weatherTypes';
 import { sceneAssets } from '@/game/assets/assetManifest';
+import { STAGE_ONE_VISUALS } from '@/game/visual/stageOneVisualPolicy';
+import { DECOR_PLACEMENTS, MID_LAYER_PLACEMENT } from '@/content/maps/urbanWastelandLayout';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
 
@@ -309,8 +311,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // ── 第 2 层：中景废墟/管线/电杆 ──
     if (this.textures.exists(MID_BUILDINGS_TEXTURE)) {
-      const mid = this.add.image(W / 2, MID_BOTTOM_Y, MID_BUILDINGS_TEXTURE);
+      const mid = this.add.image(MID_LAYER_PLACEMENT.x, MID_LAYER_PLACEMENT.baseY, MID_BUILDINGS_TEXTURE);
       mid.setOrigin(0.5, 1);
+      mid.setAlpha(STAGE_ONE_VISUALS.midAlpha);
+      mid.setScrollFactor(MID_LAYER_PLACEMENT.scrollX, MID_LAYER_PLACEMENT.scrollY);
       this.midLayer.add(mid);
     } else if (DEBUG_HITBOX) {
       this.midLayer.add(this.add.rectangle(W / 2, MID_BOTTOM_Y, W, 260, 0x5a6b63, 0.6).setOrigin(0.5, 1));
@@ -645,14 +649,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
     if (!this.textures.exists(DECOR_PLANT_TEXTURE)) return;
 
     // 带内错落分布（前中后排），底部对齐
-    const positions = [
-      { x: 200, y: 730, scale: 0.3 },
-      { x: 550, y: 1010, scale: 0.35 },
-      { x: 1000, y: 745, scale: 0.3 },
-      { x: 1600, y: 990, scale: 0.32 },
-      { x: 120, y: 950, scale: 0.28 },
-      { x: 1820, y: 780, scale: 0.26 },
-    ];
+    const positions = DECOR_PLACEMENTS.filter((p) => p.enabled).map((p) => ({ x: p.x, y: p.baseY, scale: Math.min(0.32, p.visibleHeight / 500) }));
 
     for (const pos of positions) {
       const plant = this.add.image(pos.x, pos.y, DECOR_PLANT_TEXTURE);
@@ -1517,11 +1514,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       // 暴雨垃圾仅在 heavy_rain 下可见和可交互
       if (config.id === 'interaction.storm_debris_01') {
         const visible = weather === 'heavy_rain';
-        const gameObject = zone.getGameObject();
-        if (gameObject && gameObject.scene) {
-          gameObject.setVisible(visible);
-          gameObject.setActive(visible);
-        }
+        zone.setVisualVisible(visible);
         if (!visible) {
           zone.forceUnavailable();
         }
@@ -1531,11 +1524,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       // 雾天危险点仅在 fog 下可见和可交互
       if (config.id === 'interaction.fog_hazard_01' || config.id === 'interaction.fog_hazard_02') {
         const visible = weather === 'fog';
-        const gameObject = zone.getGameObject();
-        if (gameObject && gameObject.scene) {
-          gameObject.setVisible(visible);
-          gameObject.setActive(visible);
-        }
+        zone.setVisualVisible(visible);
         if (!visible) {
           zone.forceUnavailable();
         }

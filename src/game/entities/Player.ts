@@ -3,6 +3,7 @@ import { PLAYER_SIZE, PLAYER_SPEED } from '@/game/config/movementConfig';
 import { DEBUG_HITBOX } from '@/game/config/movementConfig';
 import { entityDepth, DEPTH_ENTITY_LABEL } from '@/game/config/depthConfig';
 import { computeMovementVector, type MovementInput } from './movementVector';
+import { ContactShadow } from '@/game/visual/ContactShadow';
 
 /** 玩家侧视图纹理 key — 在 Scene preload 中加载。 */
 export const PLAYER_TEXTURE_KEYS = {
@@ -24,6 +25,7 @@ export class Player {
   readonly gameObject: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
   private readonly body: Phaser.Physics.Arcade.Body;
   private readonly label: Phaser.GameObjects.Text;
+  private readonly shadow: ContactShadow;
 
   constructor(
     scene: Phaser.Scene,
@@ -69,8 +71,10 @@ export class Player {
       displayH - PLAYER_SIZE.height,
     );
 
-    this.label = scene.add.text(x, y - PLAYER_DISPLAY_HEIGHT - 10, label, {
-      fontSize: '14px',
+    this.shadow = new ContactShadow(scene, x, y, 42, 12);
+
+    this.label = scene.add.text(x, y - PLAYER_DISPLAY_HEIGHT - 16, label, {
+      fontSize: '11px',
       color: '#EAF4F2',
       backgroundColor: 'rgba(8, 23, 26, 0.86)',
       padding: { x: 4, y: 2 },
@@ -106,7 +110,8 @@ export class Player {
     this.body.setVelocity(vx, vy);
 
     // 更新标签位置 — 角色原点在脚底，标签在头顶上方
-    this.label.setPosition(this.gameObject.x, this.gameObject.y - PLAYER_DISPLAY_HEIGHT - 10);
+    this.label.setPosition(this.gameObject.x, this.gameObject.y - PLAYER_DISPLAY_HEIGHT - 16);
+    this.shadow.sync(this.gameObject.x, this.gameObject.y - 2);
 
     // 深度排序 — Y-sort：深度 = ENTITY_BASE + 脚底 y，实现 2.5D 前后遮挡。
     // 注意：本对象必须直接挂载在场景根（不能放入 Container），否则深度排序失效。
