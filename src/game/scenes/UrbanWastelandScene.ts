@@ -77,6 +77,9 @@ import { DECOR_PLACEMENTS, MID_LAYER_PLACEMENT } from '@/content/maps/urbanWaste
 import { resolveFocus } from '@/game/visual/labelPolicy';
 import { TaskMarker } from '@/game/visual/TaskMarker';
 import { shouldLoad } from '@/game/assets/assetLoadPolicy';
+import { createRepairMapContext, REMOTE_REPAIR_SCENE_KEY } from '@/game/session/repairMapTransition';
+import { isRemoteDamagedEnvironment, remoteInteractionVisual } from '@/game/visual/remoteInteractionPolicy';
+import { foregroundPolicy } from '@/game/visual/foregroundPolicy';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
 
@@ -379,7 +382,11 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // ── 第 5 层：前景遮挡 ──
     if (this.textures.exists(FOREGROUND_TEXTURE)) {
       const fg = this.add.image(W / 2, FOREGROUND_ANCHOR_Y, FOREGROUND_TEXTURE);
-      fg.setOrigin(0.5, 1); // 底边对齐锚点
+      fg.setOrigin(0.5, 1);
+      const policy = foregroundPolicy(W);
+      fg.setAlpha(policy.alpha);
+      fg.setDepth(DEPTH_FOREGROUND);
+      fg.setScrollFactor(1); // 底边对齐锚点
       this.foregroundLayer.add(fg);
     } else if (DEBUG_HITBOX) {
       this.foregroundLayer.add(
@@ -681,6 +688,17 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private createInteractionObjects(): void {
     for (const config of INTERACTION_OBJECTS) {
       const zone = new InteractionZone(this, config);
+      if (isRemoteDamagedEnvironment(config.id)) {
+        const visual = remoteInteractionVisual(config);
+        const gameObject = zone.getGameObject();
+        if (gameObject) {
+          gameObject.setScale(visual.scale);
+          gameObject.setAlpha(visual.alpha);
+          gameObject.setDepth(entityDepth(config.y));
+          gameObject.setScrollFactor(1);
+          zone.setVisualVisible(true);
+        }
+      }
       // Y-sort 深度（构造器内已设置，此处显式调用以保证一致）
       zone.updateDepth();
       this.interactionZones.push(zone);
@@ -1003,7 +1021,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // 受损环境点交互
     if (this.nearestInteractionId && !this.nearestIsNpc && this.damagedEnvObjectIds.has(this.nearestInteractionId)) {
-      this.handleRestoreAreaInteraction(this.nearestInteractionId);
+      this.openRepairMap(this.nearestInteractionId);
       return;
     }
 
@@ -1137,27 +1155,6 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * 只有任务已接取时才能增加进度。
    * 同一环境点只能计入一次（通过 sourceId 防重复）。
    */
-  private handleRestoreAreaInteraction(objectId: string): boolean {
-    const def = findDailyTaskById('daily_restore_area');
-    if (!def) return false;
-
-    const tasks = useDailyTaskStore.getState().tasks;
-    const inst = tasks.find((t) => t.taskId === 'daily_restore_area');
-    if (!inst || inst.status !== 'active') {
-      this.emitInteractionFeedback(objectId, '请先向林工接取修复受损环境点任务。');
-      return true;
-    }
-
-    // 计入进度
-    gameBridge.emit('DAILY_TASK_PROGRESS_SIGNAL', {
-      objectiveType: def.objectiveType,
-      amount: 1,
-      sourceId: objectId,
-    });
-    this.emitInteractionFeedback(objectId, '已修复一处受损环境点。');
-    return true;
-  }
-
   /**
    * 处理生态巡查点交互。
    *
@@ -1196,6 +1193,15 @@ export class UrbanWastelandScene extends Phaser.Scene {
       npcName: npcDef.displayName,
       npcRole: npcDef.role,
     });
+  }
+
+  private openRepairMap(objectId: string): void {
+    if (!isRemoteDamagedEnvironment(objectId) || this.scene.isPaused()) return;
+    const player = this.player?.gameObject;
+    if (!player) return;
+    createRepairMapContext(SCENE_KEY, objectId, { x: player.x, y: player.y });
+    this.scene.launch(REMOTE_REPAIR_SCENE_KEY);
+    this.scene.pause();
   }
 
   private handleInteractionObject(objectId: string): void {

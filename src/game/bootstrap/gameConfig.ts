@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { UrbanWastelandScene } from '@/game/scenes/UrbanWastelandScene';
+import { EnvironmentRepairScene } from '@/game/scenes/EnvironmentRepairScene';
 
 /**
  * Phaser 游戏配置。
@@ -27,6 +28,6 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
-    scene: [UrbanWastelandScene],
+    scene: [UrbanWastelandScene, EnvironmentRepairScene],
   };
 }
