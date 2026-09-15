@@ -41,3 +41,15 @@ describe('GameHud', () => {
     expect(called).toBe(true);
   });
 });
+
+// These are playable HUD controls, not a replacement start menu.
+describe('demo-style in-game HUD', () => {
+  beforeEach(() => { useUIStore.getState().returnToStart(); useUIStore.getState().setPage('game'); });
+  it('shows the actual region, supplied character and movement controls', () => {
+    render(<GameHud onReturnToStart={() => {}} characterName="测试修复员" />);
+    expect(screen.getByRole('heading', {name:'雾港旧工业区'})).toBeInTheDocument();
+    expect(screen.getByText('测试修复员')).toBeInTheDocument();
+    expect(screen.getByText(/WASD/)).toBeInTheDocument();
+    expect(screen.queryByText('开始调查')).not.toBeInTheDocument();
+  });
+});

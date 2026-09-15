@@ -57,7 +57,7 @@ export function GameHud({ onReturnToStart, characterName }: GameHudProps) {
             <span className={styles.charName}>{displayName}</span>
           </div>
           <span className={styles.divider}>|</span>
-          <span className={styles.mapName}>{V0_1_MAIN_MAP_IDENTITY.displayName}</span>
+          <h1 className={styles.mapName}>{V0_1_MAIN_MAP_IDENTITY.displayName}</h1>
         </div>
         <div className={styles.topRight}>
           <button
@@ -78,6 +78,7 @@ export function GameHud({ onReturnToStart, characterName }: GameHudProps) {
         </div>
       </div>
 
+      <div className={styles.movementHint}>WASD / 方向键 移动 · E 交互 / 按住修复</div>
       {/* 底部栏 */}
       <div className={styles.bottomBar}>
         <button

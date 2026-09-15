@@ -29,6 +29,16 @@ export const imageAssets = {
  * 所有组件和 Phaser 场景从此统一引用，禁止分散硬编码路径。
  */
 export const sceneAssets = {
+  demo: {
+    sky: '/assets/images/demo-scene/01_sky.png',
+    farFactory: '/assets/images/demo-scene/02_far_factory.png',
+    factory: '/assets/images/demo-scene/03_factory.png',
+    pipe: '/assets/images/demo-scene/04_pipe.png',
+    ground: '/assets/images/demo-scene/05_ground.png',
+    barrel: '/assets/images/demo-scene/06_barrel.png',
+    fence: '/assets/images/demo-scene/07_fence.png',
+    smoke: '/assets/images/demo-scene/08_smoke.png',
+  },
   backgrounds: {
     industrialWasteland: '/assets/images/backgrounds/industrial-wasteland-bg.png',
     // 2.5D 改造：分层背景（规范 §10）

@@ -28,3 +28,7 @@
   color: var(--color-primary);
   font-weight: 600;
 }
+
+.worldStatus { top: 70px; left: 24px; padding: 8px 12px; border-radius: 9px; background: var(--color-panel); backdrop-filter: blur(14px); gap: 16px; }
+.statusItem { gap: 6px; }
+@media (max-width: 760px) { .worldStatus { top: 56px; left: 12px; gap: 8px; padding: 6px 8px; flex-wrap: wrap; max-width: calc(100% - 24px); } }

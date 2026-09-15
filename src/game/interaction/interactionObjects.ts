@@ -1,4 +1,4 @@
-﻿import type { InteractionObjectConfig } from './interactionTypes';
+import type { InteractionObjectConfig } from './interactionTypes';
 import { POLLUTION_LAYOUT, SCENE_OBJECT_LAYOUTS } from '@/content/maps/urbanWastelandLayout';
 import { interactionPosition } from '@/game/visual/sceneObjectTypes';
 
@@ -18,12 +18,14 @@ const positionFor = (id: string, fallback: { x: number; y: number }) => {
 export const INTERACTION_OBJECTS: InteractionObjectConfig[] = [
   {
     id: 'interaction.pollution_zone_01', type: 'pollution', displayName: '污染物堆',
+    targetMapId: 'map.pollution_cleanup_01',
     ...interactionPosition(POLLUTION_LAYOUT), width: 64, height: 64, interactionRange: 90,
     feedbackMessage: '已检查污染区域，需要先向林工了解修复任务。', color: 0x8b4422,
     textureKey: SCENE_TEXTURE_KEYS.pollutionPileLarge, restoredTextureKey: SCENE_TEXTURE_KEYS.restoredPlantsLarge, displayHeight: 120,
   },
   {
     id: 'interaction.monitoring_device_01', type: 'monitoring_device', displayName: '环境监测装置',
+    targetMapId: 'map.environment_monitoring_01',
     ...positionFor('interaction.monitoring_device_01', { x: 1500, y: 940 }), width: 48, height: 48, interactionRange: 80,
     feedbackMessage: '环境监测装置已启动，正式数据采集将在后续任务中实现。', color: 0x4a7a8a,
     textureKey: SCENE_TEXTURE_KEYS.environmentMonitorDevice, displayHeight: 140,

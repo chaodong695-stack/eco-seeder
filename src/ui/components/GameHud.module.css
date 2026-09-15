@@ -115,3 +115,24 @@
   color: var(--color-primary);
   background: var(--color-panel-light);
 }
+
+/* Main-scene glass HUD; all existing input guards and controls are retained. */
+.topBar { padding: 18px 24px; background: linear-gradient(180deg, rgba(20, 27, 24, .64), transparent); }
+.topLeft { flex-wrap: wrap; gap: 12px; }
+.mapName { margin: 0; color: #f1eddd; font-size: clamp(14px, 1.5vw, 21px); font-weight: 600; letter-spacing: .12em; }
+.charInfo { color: #c4d4af; }
+.charName { font-size: 12px; }
+.iconBtn, .bottomBtn { border-color: rgba(202, 215, 174, .25); border-radius: 9px; backdrop-filter: blur(14px); box-shadow: 0 4px 18px #0002; }
+.bottomBar { left: 24px; right: auto; bottom: 18px; padding: 0; gap: 8px; background: none; }
+.bottomBtn { padding: 9px 16px; font-size: 12px; }
+.bottomBtn:focus-visible, .iconBtn:focus-visible { outline: 2px solid #d7e6b6; outline-offset: 3px; }
+.bottomBtn:disabled, .iconBtn:disabled { opacity: .45; }
+.movementHint { position: absolute; bottom: 28px; right: 62px; color: #e0e3d2; font-size: 11px; letter-spacing: .04em; text-shadow: 0 1px 4px #000; }
+@media (max-width: 760px) {
+  .topBar { padding: 10px 12px; }
+  .topLeft { gap: 6px; }
+  .charIcon, .divider { display: none; }
+  .bottomBar { left: 12px; bottom: 12px; }
+  .bottomBtn { padding: 8px 10px; }
+  .movementHint { bottom: 57px; left: 12px; right: auto; font-size: 10px; }
+}
