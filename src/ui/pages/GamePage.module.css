@@ -1,4 +1,11 @@
 .container {
+  --color-primary: #c7d6a5;
+  --color-panel: rgba(24, 35, 29, 0.83);
+  --color-panel-light: rgba(44, 57, 43, 0.8);
+  --color-border: rgba(203, 215, 173, 0.25);
+  --color-text-primary: #eeeedd;
+  --color-text-secondary: #bac5af;
+  background: #121b18;
   width: 100%;
   height: 100%;
   position: relative;

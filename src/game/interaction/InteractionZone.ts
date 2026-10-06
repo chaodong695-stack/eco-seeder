@@ -3,6 +3,7 @@ import type { InteractionObjectConfig } from './interactionTypes';
 import { INTERACTION_COOLDOWN_MS } from '@/game/config/movementConfig';
 import { DEBUG_HITBOX } from '@/game/config/movementConfig';
 import { entityDepth, DEPTH_ENTITY_LABEL } from '@/game/config/depthConfig';
+import { ContactShadow } from '@/game/visual/ContactShadow';
 
 /** 视觉更新参数。 */
 export interface InteractionZoneVisualUpdate {
@@ -27,6 +28,7 @@ export class InteractionZone {
   private label: Phaser.GameObjects.Text | null;
   /** 持有创建此对象的 Scene 引用，用于销毁后验证。 */
   private readonly scene: Phaser.Scene;
+  private readonly shadow: ContactShadow;
   private isAvailable = false;
   private lastTriggerTime = 0;
   private destroyed = false;
@@ -74,6 +76,8 @@ export class InteractionZone {
     });
     this.label.setOrigin(0.5);
     this.label.setDepth(DEPTH_ENTITY_LABEL);
+    this.label.setVisible?.(false);
+    this.shadow = new ContactShadow(scene, config.x, config.y - 2, Math.max(28, config.width * 0.8), 10);
     // 初始深度 — Y-sort（视觉对象直接挂场景根）
     this.updateDepth();
   }
@@ -116,6 +120,7 @@ export class InteractionZone {
    */
   forceUnavailable(): void {
     this.isAvailable = false;
+    this.setLabelVisible(false);
   }
 
   /**
@@ -221,6 +226,16 @@ export class InteractionZone {
     return this.destroyed ? null : this.visualObject;
   }
 
+  /** 统一切换主体、标签与接触阴影的呈现状态。 */
+  setVisualVisible(visible: boolean): void {
+    if (this.destroyed) return;
+    if (this.visualObject.scene) {
+      this.visualObject.setVisible(visible);
+      this.visualObject.setActive(visible);
+    }
+    if (this.label?.scene) this.label.setVisible?.(visible && this.isAvailable);
+    this.shadow.sync(this.config.x, this.config.y, visible ? 0.32 : 0);
+  }
   /**
    * 设置标签文本。
    *
@@ -228,6 +243,11 @@ export class InteractionZone {
    * 直接销毁 Text 的内部 texture/frame/canvas，而 wrapper 尚未标记 destroyed。
    * 必须验证 Text 仍属于当前有效 Scene 且未被 Phaser 内部销毁。
    */
+  setLabelVisible(visible: boolean): void {
+    if (this.destroyed || !this.label?.scene) return;
+    this.label.setVisible?.(visible);
+  }
+
   setLabelText(text: string): void {
     if (this.destroyed || !this.label) return;
     // 验证 label 尚未被 Phaser 内部销毁，且 Scene 仍然活跃
@@ -236,6 +256,10 @@ export class InteractionZone {
   }
 
   /** 是否已销毁。 */
+  get visualVisible(): boolean {
+    return Boolean(this.visualObject?.visible && this.visualObject?.active);
+  }
+
   get isDestroyed(): boolean {
     return this.destroyed;
   }
@@ -248,6 +272,7 @@ export class InteractionZone {
       this.label.destroy();
       this.label = null;
     }
+    this.shadow.destroy();
     this.visualObject.destroy();
   }
 

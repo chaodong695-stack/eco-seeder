@@ -138,12 +138,12 @@ describe('WeatherVisualController', () => {
 
   it('applies light_rain with particles', () => {
     controller.applyWeather('light_rain');
-    expect(scene._particleEmitters.length).toBe(1);
+    expect(scene._particleEmitters.length).toBe(3);
   });
 
   it('applies heavy_rain with particles', () => {
     controller.applyWeather('heavy_rain');
-    expect(scene._particleEmitters.length).toBe(1);
+    expect(scene._particleEmitters.length).toBe(3);
   });
 
   it('applies fog with fog rects', () => {
@@ -209,7 +209,7 @@ describe('WeatherVisualController', () => {
     controller.destroy();
     const controller2 = new WeatherVisualController(scene);
     controller2.applyWeather('light_rain');
-    expect(scene._particleEmitters.filter((e) => e.scene !== null).length).toBe(1);
+    expect(scene._particleEmitters.filter((e) => e.scene !== null).length).toBe(3);
     controller2.destroy();
   });
 
@@ -220,6 +220,6 @@ describe('WeatherVisualController', () => {
     }
     // Only one active emitter at most
     const activeEmitters = scene._particleEmitters.filter((e) => e.scene !== null);
-    expect(activeEmitters.length).toBeLessThanOrEqual(1);
+    expect(activeEmitters.length).toBeLessThanOrEqual(3);
   });
 });

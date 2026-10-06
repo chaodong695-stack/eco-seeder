@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { PLAYER_SPEED } from '@/game/config/movementConfig';
 import { computeMovementVector } from '@/game/entities/movementVector';
 
 describe('computeMovementVector', () => {
@@ -117,5 +118,20 @@ describe('computeMovementVector', () => {
     );
     expect(result.vx).toBe(0);
     expect(result.vy).toBe(0);
+  });
+});
+
+
+describe('configured main-scene walking speed', () => {
+  it('uses 520 world pixels per second vertically and horizontally', () => {
+    expect(PLAYER_SPEED).toBe(520);
+    const up = computeMovementVector({ up: true, down: false, left: false, right: false }, PLAYER_SPEED);
+    const right = computeMovementVector({ up: false, down: false, left: false, right: true }, PLAYER_SPEED);
+    expect(up).toEqual({ vx: 0, vy: -520 });
+    expect(right).toEqual({ vx: 520, vy: 0 });
+  });
+  it('keeps diagonal total speed at 520, rather than accelerating', () => {
+    const diagonal = computeMovementVector({ up: true, down: false, left: false, right: true }, PLAYER_SPEED);
+    expect(Math.hypot(diagonal.vx, diagonal.vy)).toBeCloseTo(520, 5);
   });
 });

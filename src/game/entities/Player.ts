@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
+import { spriteBodyGeometry } from './spriteBodyGeometry';
 import { PLAYER_SIZE, PLAYER_SPEED } from '@/game/config/movementConfig';
 import { DEBUG_HITBOX } from '@/game/config/movementConfig';
 import { entityDepth, DEPTH_ENTITY_LABEL } from '@/game/config/depthConfig';
 import { computeMovementVector, type MovementInput } from './movementVector';
+import { ContactShadow } from '@/game/visual/ContactShadow';
 
 /** 玩家侧视图纹理 key — 在 Scene preload 中加载。 */
 export const PLAYER_TEXTURE_KEYS = {
@@ -24,6 +26,7 @@ export class Player {
   readonly gameObject: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
   private readonly body: Phaser.Physics.Arcade.Body;
   private readonly label: Phaser.GameObjects.Text;
+  private readonly shadow: ContactShadow;
 
   constructor(
     scene: Phaser.Scene,
@@ -31,6 +34,7 @@ export class Player {
     y: number,
     label: string,
     gender?: 'male' | 'female',
+    private readonly perspectiveHeight?: (y: number) => number,
   ) {
     const texKey = gender ? PLAYER_TEXTURE_KEYS[gender] : null;
 
@@ -58,19 +62,12 @@ export class Player {
     scene.physics.add.existing(this.gameObject);
     this.body = this.gameObject.body as Phaser.Physics.Arcade.Body;
     this.body.setCollideWorldBounds(true);
-    this.body.setSize(PLAYER_SIZE.width, PLAYER_SIZE.height);
-    // 原点在底部中心时，body offset 需要调整使碰撞体在角色脚部上方
-    // Phaser body offset 是从 texture frame 左上角算起的
-    // 对于 origin(0.5,1) 的对象，需要居中碰撞体
-    const displayW = this.gameObject.displayWidth;
-    const displayH = this.gameObject.displayHeight;
-    this.body.setOffset(
-      (displayW - PLAYER_SIZE.width) / 2,
-      displayH - PLAYER_SIZE.height,
-    );
+    this.syncPerspectiveBody();
 
-    this.label = scene.add.text(x, y - PLAYER_DISPLAY_HEIGHT - 10, label, {
-      fontSize: '14px',
+    this.shadow = new ContactShadow(scene, x, y, 42, 12);
+
+    this.label = scene.add.text(x, y - PLAYER_DISPLAY_HEIGHT - 16, label, {
+      fontSize: '11px',
       color: '#EAF4F2',
       backgroundColor: 'rgba(8, 23, 26, 0.86)',
       padding: { x: 4, y: 2 },
@@ -101,12 +98,29 @@ export class Player {
   /**
    * 根据输入状态更新玩家移动。
    */
+  private syncPerspectiveBody(): void {
+    const obj = this.gameObject;
+    if (obj instanceof Phaser.GameObjects.Image && this.perspectiveHeight) {
+      this.scaleImageToHeight(obj, this.perspectiveHeight(obj.y));
+    }
+    const geometry = spriteBodyGeometry(obj.width, obj.height, obj.scaleX, PLAYER_SIZE.width, PLAYER_SIZE.height);
+    this.body.setSize(geometry.width, geometry.height, false);
+    this.body.setOffset(geometry.offsetX, geometry.offsetY);
+  }
+
   updateMovement(input: MovementInput): void {
+    this.syncPerspectiveBody();
     const { vx, vy } = computeMovementVector(input, PLAYER_SPEED);
     this.body.setVelocity(vx, vy);
+    // Both source sprites face left: mirror only when moving right.
+    // With no horizontal movement, keep the last facing direction.
+    if (vx !== 0 && this.gameObject instanceof Phaser.GameObjects.Image) {
+      this.gameObject.setFlipX(vx > 0);
+    }
 
     // 更新标签位置 — 角色原点在脚底，标签在头顶上方
-    this.label.setPosition(this.gameObject.x, this.gameObject.y - PLAYER_DISPLAY_HEIGHT - 10);
+    this.label.setPosition(this.gameObject.x, this.gameObject.y - this.gameObject.displayHeight - 16);
+    this.shadow.sync(this.gameObject.x, this.gameObject.y - 2);
 
     // 深度排序 — Y-sort：深度 = ENTITY_BASE + 脚底 y，实现 2.5D 前后遮挡。
     // 注意：本对象必须直接挂载在场景根（不能放入 Container），否则深度排序失效。
@@ -115,6 +129,7 @@ export class Player {
   }
 
   destroy(): void {
+    this.shadow.destroy();
     this.label.destroy();
     this.gameObject.destroy();
   }

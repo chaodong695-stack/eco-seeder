@@ -45,6 +45,7 @@ import { useEnvironmentStore } from '@/store/environmentStore';
 import { V0_1_MAIN_MAP_IDENTITY } from '@/content/maps/urbanWasteland';
 import { ANONYMOUS_PLAYER_ID } from '@/domain/time/worldTimeService';
 import { usePlayerStore } from '@/store/playerStore';
+import { useGovernanceStore } from '@/store/governanceStore';
 import type { WeatherType } from '@/domain/weather/weatherTypes';
 
 /** 地图 ID 常量。 */
@@ -70,6 +71,7 @@ interface DailyTaskStoreState {
   acceptTask: (instanceId: string) => boolean;
   /** 应用进度信号。 */
   applyProgress: (signal: TaskProgressSignal) => void;
+  reconcileGovernanceProgress: () => void;
   /** 获取指定 NPC 负责的任务列表。 */
   getTasksByNpcId: (npcId: string) => DailyTaskInstance[];
   /** 获取所有任务（含定义信息）。 */
@@ -180,7 +182,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
 
   init: () => {
     const state = get();
-    if (state.isInitialized) return;
+    if (state.isInitialized) { get().reconcileGovernanceProgress(); return; }
 
     const worldStore = useWorldStore.getState();
     const localDate = worldStore.timeSnapshot.localDate;
@@ -234,6 +236,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
         });
         persistTasks(newTasks, localDate, selectedCharacterId, new Set<string>());
         gameBridge.emit('DAILY_TASKS_GENERATED', { tasks: newTasks });
+        get().reconcileGovernanceProgress();
         return;
       }
 
@@ -246,6 +249,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
       });
       persistTasks(refreshedTasks, localDate, selectedCharacterId, restoredContributedSources);
       gameBridge.emit('DAILY_TASKS_GENERATED', { tasks: refreshedTasks });
+      get().reconcileGovernanceProgress();
       return;
     }
 
@@ -272,6 +276,7 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
     });
     persistTasks(newTasks, localDate, selectedCharacterId, new Set<string>());
     gameBridge.emit('DAILY_TASKS_GENERATED', { tasks: newTasks });
+    get().reconcileGovernanceProgress();
   },
 
   refreshWeatherConditions: () => {
@@ -332,7 +337,19 @@ export const useDailyTaskStore = create<DailyTaskStoreState>((set, get) => ({
       currentStatus: newStatus,
     });
 
+    get().reconcileGovernanceProgress();
     return true;
+  },
+
+  // 恢复存档或接取任务时，补齐已完成治理成果；沿用原进度去重规则。
+  reconcileGovernanceProgress: () => {
+    const completed = useGovernanceStore.getState().completedPointIds;
+    if (completed.includes('cleanup.wastewater') && completed.includes('cleanup.leak')) {
+      get().applyProgress({ objectiveType: 'collect_waste', amount: 1, sourceId: 'interaction.pollution_zone_01' });
+    }
+    for (const [pointId, sourceId] of [['repair.soil', 'interaction.damaged_env_01'], ['repair.water', 'interaction.damaged_env_02']]) {
+      if (completed.includes(pointId)) get().applyProgress({ objectiveType: 'restore_area', amount: 1, sourceId });
+    }
   },
 
   applyProgress: (signal: TaskProgressSignal) => {

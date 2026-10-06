@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { CharacterSelectPage } from '@/ui/pages/CharacterSelectPage';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
+import { useGovernanceStore } from '@/store/governanceStore';
 
 describe('CharacterSelectPage', () => {
   beforeEach(() => {
@@ -48,5 +49,16 @@ describe('CharacterSelectPage', () => {
     render(<CharacterSelectPage />);
     fireEvent.click(screen.getByText('返回'));
     expect(useUIStore.getState().currentPage).toBe('start');
+  });
+
+  it('starts a fresh mission when a new character selection is confirmed', () => {
+    useGovernanceStore.getState().beginSession('male');
+    useGovernanceStore.getState().acceptMission();
+    render(<CharacterSelectPage />);
+    fireEvent.click(screen.getByText('女性修复员'));
+    fireEvent.click(screen.getByText('进入主场景'));
+    expect(useGovernanceStore.getState().stage).toBe('briefing');
+    expect(useGovernanceStore.getState().characterGender).toBe('female');
+    expect(useGovernanceStore.getState().completedPointIds).toEqual([]);
   });
 });

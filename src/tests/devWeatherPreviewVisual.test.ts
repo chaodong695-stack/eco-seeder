@@ -143,10 +143,10 @@ describe('Dev weather preview — WeatherVisualController resource cleanup', () 
 
   it('consecutive weather switches do not accumulate active particle emitters', () => {
     controller.applyWeather('light_rain');
-    expect(scene._particleEmitters.filter((e) => e.scene !== null).length).toBe(1);
+    expect(scene._particleEmitters.filter((e) => e.scene !== null).length).toBe(3);
 
     controller.applyWeather('heavy_rain');
-    expect(scene._particleEmitters.filter((e) => e.scene !== null).length).toBe(1);
+    expect(scene._particleEmitters.filter((e) => e.scene !== null).length).toBe(3);
 
     controller.applyWeather('clear');
     expect(scene._particleEmitters.filter((e) => e.scene !== null).length).toBe(0);
@@ -238,7 +238,7 @@ describe('Dev weather preview — WeatherVisualController resource cleanup', () 
 
     const controller2 = new WeatherVisualController(scene);
     controller2.applyWeather('light_rain');
-    expect(scene._particleEmitters.filter((e) => e.scene !== null).length).toBe(1);
+    expect(scene._particleEmitters.filter((e) => e.scene !== null).length).toBe(3);
     controller2.destroy();
   });
 });

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useUIStore } from '@/store/uiStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useGovernanceStore } from '@/store/governanceStore';
+import { usePlayerStore } from '@/store/playerStore';
 import { getAudioManager, playBgmByKey } from '@/game/audio/audioManager';
 import { imageAssets } from '@/game/assets/assetManifest';
 import styles from './StartPage.module.css';
@@ -12,6 +14,16 @@ export function StartPage() {
   const muted = useSettingsStore((s) => s.muted);
   const setMuted = useSettingsStore((s) => s.setMuted);
   const [mutedState, setMutedState] = useState(muted);
+  const savedGender = useGovernanceStore(s => s.characterGender);
+  const [confirmNew, setConfirmNew] = useState(false);
+
+  const handleContinue = () => {
+    const gender = useGovernanceStore.getState().restoreSession();
+    if (!gender) return;
+    usePlayerStore.getState().selectCharacter(gender);
+    getAudioManager().unlock();
+    setPage('game');
+  };
 
   useEffect(() => {
     const mgr = getAudioManager();
@@ -70,10 +82,16 @@ export function StartPage() {
             重新建立人与生态系统的连接
           </p>
         </div>
-        <button className={styles.startButton} onClick={handleStart}>
-          <span>开始修复</span>
+        <button className={styles.startButton} onClick={savedGender ? handleContinue : handleStart}>
+          <span>{savedGender ? '继续游戏' : '开始修复'}</span>
           <span className={styles.buttonArrow} aria-hidden="true">↗</span>
         </button>
+        {savedGender && <button className={styles.newGameButton} onClick={() => setConfirmNew(true)}>开始新游戏</button>}
+        {confirmNew && <div className={styles.newGameConfirm} role="dialog" aria-label="确认新游戏">
+          <p>开始新游戏会清空已保存的治理进度。</p>
+          <button onClick={() => { setConfirmNew(false); handleStart(); }}>确认开始新游戏</button>
+          <button onClick={() => setConfirmNew(false)}>保留进度</button>
+        </div>}
         <div className={styles.sectorLabel}>雾港生态修复计划 <span>·</span> SECTOR 01</div>
       </section>
     </main>

@@ -10,3 +10,12 @@ if (typeof HTMLAudioElement !== 'undefined') {
     return Promise.reject(new DOMException('Not supported', 'NotSupportedError'));
   };
 }
+
+if (typeof HTMLCanvasElement !== 'undefined') {
+  HTMLCanvasElement.prototype.getContext = (() => ({
+    fillStyle: '',
+    fillRect: () => undefined,
+    getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+    putImageData: () => undefined,
+  })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+}

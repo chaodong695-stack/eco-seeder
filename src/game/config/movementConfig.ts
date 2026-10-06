@@ -6,7 +6,7 @@
  */
 
 /** 玩家移动速度（像素/秒）。 */
-export const PLAYER_SPEED = 200;
+export const PLAYER_SPEED = 520;
 
 /** 玩家占位角色尺寸。 */
 export const PLAYER_SIZE = {

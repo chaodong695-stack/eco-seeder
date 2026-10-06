@@ -22,10 +22,13 @@ import { ANONYMOUS_PLAYER_ID } from '@/domain/time/worldTimeService';
 import { V0_1_MAIN_MAP_IDENTITY } from '@/content/maps/urbanWasteland';
 import { DAILY_TASK_POOL_VERSION } from '@/domain/tasks/dailyTaskDefinitions';
 import styles from './DevDebugPanel.module.css';
+import { useVisualDebugStore } from '@/game/visual/visualDebugStore';
 
 export function DevDebugPanel() {
   const [collapsed, setCollapsed] = useState(true);
   const [tick, setTick] = useState(0);
+  const visualDebugEnabled = useVisualDebugStore((state) => state.enabled);
+  const setVisualDebugEnabled = useVisualDebugStore((state) => state.setEnabled);
 
   // 定时刷新面板数据
   useEffect(() => {
@@ -79,6 +82,16 @@ export function DevDebugPanel() {
       </div>
       <div className={styles.body}>
         <section className={styles.section}>
+          <h4>视觉空间调试</h4>
+          <label className={styles.field}>
+            <input
+              type="checkbox"
+              checked={visualDebugEnabled}
+              onChange={(event) => setVisualDebugEnabled(event.target.checked)}
+            />
+            显示锚点、深度与遮挡覆盖层
+          </label>
+        </section>        <section className={styles.section}>
           <h4>每日任务 Store</h4>
           <div className={styles.field}>
             <span>isInitialized:</span> {String(dailyTaskState.isInitialized)}

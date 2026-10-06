@@ -25,6 +25,7 @@ import { Player } from '../entities/Player';
 import type { MovementInput } from '../entities/movementVector';
 import { InteractionZone } from '../interaction/InteractionZone';
 import { INTERACTION_OBJECTS, SCENE_TEXTURE_KEYS } from '../interaction/interactionObjects';
+import { useGovernanceStore } from '@/store/governanceStore';
 import {
   WORLD_BOUNDS,
   CAMERA_FOLLOW,
@@ -72,12 +73,29 @@ import { isWeatherConditionMet } from '@/domain/tasks/dailyTaskConditionResolver
 import type { DayPhase } from '@/domain/time/timeTypes';
 import type { WeatherType } from '@/domain/weather/weatherTypes';
 import { sceneAssets } from '@/game/assets/assetManifest';
+import { STAGE_ONE_VISUALS } from '@/game/visual/stageOneVisualPolicy';
+import { DECOR_PLACEMENTS, MID_LAYER_PLACEMENT } from '@/content/maps/urbanWastelandLayout';
+import { resolveFocus } from '@/game/visual/labelPolicy';
+import { TaskMarker } from '@/game/visual/TaskMarker';
+import { shouldLoad } from '@/game/assets/assetLoadPolicy';
+import { createRepairMapContext, REMOTE_REPAIR_SCENE_KEY } from '@/game/session/repairMapTransition';
+import { createDedicatedMapContext } from '@/game/session/dedicatedMapTransition';
+import { getDedicatedMapConfig } from '@/content/maps/dedicatedMaps';
+import { isRemoteDamagedEnvironment, remoteInteractionVisual } from '@/game/visual/remoteInteractionPolicy';
+import { foregroundPolicy } from '@/game/visual/foregroundPolicy';
+import { FAR_ATMOSPHERE, FAR_VISUAL_POLICY, TRANSITION_BAND, CONTINUITY_ANCHOR } from '@/game/visual/spatialContinuityPolicy';
+
+import { DEMO_SCENE, demoInteractionObjects, demoNpcDefinitions, demoActorHeight } from '@/content/maps/demoSceneLayout';
+import { DemoSceneBackdrop } from '@/game/visual/DemoSceneBackdrop';
+import { ContactShadow } from '@/game/visual/ContactShadow';
 
 const SCENE_KEY = V0_1_MAIN_MAP_IDENTITY.sceneKey;
 
 /** 场景纹理 key 常量 — 2.5D 改造：分层背景统一命名。 */
 const SKY_TEXTURE = 'wasteland-sky';
 const FAR_CITY_TEXTURE = 'wasteland-far-city';
+const FAR_CITY_SOFT_TEXTURE = 'wasteland-far-city-soft';
+const INDUSTRIAL_RUINS_TEXTURE = 'industrial-ruins-strip';
 const MID_BUILDINGS_TEXTURE = 'wasteland-mid-buildings';
 const GROUND_OVERLAY_TEXTURE = 'wasteland-ground';
 const FOREGROUND_TEXTURE = 'wasteland-foreground';
@@ -134,6 +152,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private farLayer!: Phaser.GameObjects.Container;
   /** 中景层 — 废墟/厂房/管线/电杆（scrollFactor 0.48）。 */
   private midLayer!: Phaser.GameObjects.Container;
+  private transitionLayer!: Phaser.GameObjects.Container;
   /** 地面层 — 路面 + 障碍物理体（scrollFactor 1.0）。 */
   private groundLayer!: Phaser.GameObjects.Container;
   /** 前景层 — 草丛/管道/废墟遮挡（scrollFactor 1.10）。 */
@@ -145,6 +164,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private npcEntities: NpcEntity[] = [];
 
   /** 色调叠加矩形引用 — 用于视觉阶段变化（位于 sky 之上、far 之下）。 */
+  private demoBackdrop: DemoSceneBackdrop | null = null;
+  private npcShadows: ContactShadow[] = [];
   private backgroundRect!: Phaser.GameObjects.Rectangle;
   /** 修复区域附近的植被装饰对象列表。 */
   private vegetationGraphics: Phaser.GameObjects.Image[] = [];
@@ -160,6 +181,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
   /** 标记最近的是否为 NPC。 */
   private nearestIsNpc: boolean = false;
   private nearestNpcId: string | null = null;
+  private focusCanInteract = false;
+  private taskMarkers = new Map<string, TaskMarker>();
 
   /** UI Store 输入模式订阅取消函数。 */
   private unsubInputMode: (() => void) | null = null;
@@ -225,18 +248,25 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * create() 中通过 `this.textures.exists(key)` 防御性检查并回退到占位图形。
    */
   preload(): void {
+    if (DEMO_SCENE.enabled) DemoSceneBackdrop.preload(this);
     // 2.5D 分层背景（占位素材，正式美术阶段按 §13 顺序逐张替换）
     this.load.image(SKY_TEXTURE, sceneAssets.backgrounds.sky);
-    this.load.image(FAR_CITY_TEXTURE, sceneAssets.backgrounds.farCity);
-    this.load.image(MID_BUILDINGS_TEXTURE, sceneAssets.backgrounds.midBuildings);
+    if (shouldLoad('optional', this.scale.width)) {
+      this.load.image(FAR_CITY_TEXTURE, sceneAssets.backgrounds.farCity);
+      this.load.image(FAR_CITY_SOFT_TEXTURE, sceneAssets.backgrounds.farCitySoft);
+      this.load.image(MID_BUILDINGS_TEXTURE, sceneAssets.backgrounds.midBuildings);
+    }
     this.load.image(GROUND_OVERLAY_TEXTURE, sceneAssets.backgrounds.ground2_5d);
     this.load.image(FOREGROUND_TEXTURE, sceneAssets.backgrounds.foreground);
+    this.load.image(INDUSTRIAL_RUINS_TEXTURE, sceneAssets.decor.industrialRuinsStrip);
 
     // 地面平铺纹理（保留作为 ground 层的核心细节）
     this.load.image(GROUND_TILE_TEXTURE, sceneAssets.tiles.crackedGround);
 
     // 绿植装饰簇（NPC 周围、修复区域周围分布）
-    this.load.image(DECOR_PLANT_TEXTURE, sceneAssets.decor.ruinPlantCluster);
+    if (shouldLoad('optional', this.scale.width)) {
+      this.load.image(DECOR_PLANT_TEXTURE, sceneAssets.decor.ruinPlantCluster);
+    }
 
     // 交互物件图片
     this.load.image(SCENE_TEXTURE_KEYS.pollutionPileLarge, sceneAssets.objects.pollutionPileLarge);
@@ -271,10 +301,133 @@ export class UrbanWastelandScene extends Phaser.Scene {
       WALKABLE_Y_MAX - WALKABLE_Y_MIN + PLAYER_SIZE.height,
     );
 
+    if (DEMO_SCENE.enabled) {
+      this.demoBackdrop = new DemoSceneBackdrop(this);
+      this.backgroundRect = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0).setDepth(1);
+      this.obstacles = this.physics.add.staticGroup();
+      for (const obs of DEMO_SCENE.obstacles) {
+        const rect = this.add.rectangle(obs.x, obs.y, obs.width, obs.height, obs.color, DEBUG_HITBOX ? 0.6 : 0);
+        this.physics.add.existing(rect, true);
+        this.obstacles.add(rect);
+      }
+    } else {
+      this.createLegacyEnvironment();
+    }
+
+    // ── 玩家 — 站立在可行走纵深带中部 ──
+    const character = usePlayerStore.getState().character;
+    const gender = character?.gender;
+    // 玩家脚底对齐纵深带中部；直接挂场景根（不放入任何 Container，保证 Y-sort 生效）
+    this.player = new Player(this, DEMO_SCENE.enabled ? DEMO_SCENE.spawn.x : W / 2, DEMO_SCENE.enabled ? DEMO_SCENE.spawn.y : (WALKABLE_Y_MIN + WALKABLE_Y_MAX) / 2, character?.displayName ?? '生态修复员', gender ?? undefined, DEMO_SCENE.enabled ? demoActorHeight : undefined);
+
+    // 玩家与障碍物碰撞
+    this.physics.add.collider(this.player.gameObject, this.obstacles);
+
+    // 交互对象
+    this.createInteractionObjects();
+
+    // NPC
+    this.createNpcs();
+
+    // 修复控制器初始化
+    this.restorationController = new RestorationController(POLLUTION_ZONE_01_TARGET);
+
+    // 每日任务进度信号监听
+    this.setupDailyTaskListeners();
+
+    // 昼夜和天气视觉控制器初始化
+    this.dayNightController = new DayNightVisualController(this);
+    this.weatherController = new WeatherVisualController(this);
+
+    // 初始化世界状态（时间 + 天气）
+    this.initWorldState();
+
+    // 初始化每日任务（在 worldStore 初始化之后，确保天气时间线可用）
+    useDailyTaskStore.getState().init();
+
+    // 交互提示文本（跟随摄像机）
+    this.interactionHintText = this.add
+      .text(W / 2, H - 120, '', {
+        fontSize: '16px',
+        color: '#27d7c4',
+        backgroundColor: 'rgba(8, 23, 26, 0.86)',
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(DEPTH_UI);
+    this.interactionHintText.setVisible(false);
+
+    // Demo uses the accessible React heading instead of a duplicate canvas title.
+    if (!DEMO_SCENE.enabled) this.add
+      .text(W / 2, 30, V0_1_MAIN_MAP_IDENTITY.displayName, {
+        fontSize: '18px',
+        color: '#27d7c4',
+        backgroundColor: 'rgba(8, 23, 26, 0.86)',
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(DEPTH_UI);
+
+    // 摄像机
+    this.cameras.main.setBounds(0, 0, W, H);
+    if (!DEMO_SCENE.enabled) this.cameras.main.startFollow(
+      this.player.gameObject,
+      true,
+      CAMERA_FOLLOW.lerpX,
+      CAMERA_FOLLOW.lerpY,
+    );
+    this.cameras.main.setZoom(1);
+    if (DEMO_SCENE.enabled) this.cameras.main.setScroll(0, 0);
+
+    // 输入
+    this.setupInput();
+
+    // 订阅 UI 输入模式变化
+    this.setupInputModeSubscription();
+
+    // 根据已有环境状态恢复视觉阶段
+    this.restoreVisualStage();
+    this.events.on(Phaser.Scenes.Events.RESUME, this.refreshGovernanceVisuals, this);
+
+    // 显式绑定 Phaser Scene 生命周期事件 — 不能假设定义 shutdown() 就会被自动调用
+    this.events.once(
+      Phaser.Scenes.Events.SHUTDOWN,
+      this.handleSceneCleanup,
+      this,
+    );
+    this.events.once(
+      Phaser.Scenes.Events.DESTROY,
+      this.handleSceneCleanup,
+      this,
+    );
+
+    // 注册 VISUAL_STAGE_CHANGED 前先取消旧订阅，防止重复注册
+    this.unsubscribeVisualStage?.();
+    this.unsubscribeVisualStage = gameBridge.on('VISUAL_STAGE_CHANGED', (payload) => {
+      // 只允许当前未销毁、活跃的 Scene 处理
+      if (
+        this.isShutdown ||
+        !this.sys.isActive() ||
+        this.cleanupCompleted
+      ) {
+        return;
+      }
+      this.applyVisualStage(payload.stage);
+    });
+
+    // 通知 React 层场景已就绪
+    gameBridge.emit('GAME_READY', { mapId: V0_1_MAIN_MAP_IDENTITY.id });
+  }
+
+  private createLegacyEnvironment(): void {
+    const { width: W, height: H } = WORLD_BOUNDS;
     // ── 创建七层图层容器（规范 §2） ──
     this.skyLayer = this.add.container(0, 0).setDepth(DEPTH_BACKGROUND).setScrollFactor(PARALLAX.sky);
     this.farLayer = this.add.container(0, 0).setDepth(DEPTH_FAR).setScrollFactor(PARALLAX.far);
     this.midLayer = this.add.container(0, 0).setDepth(DEPTH_DECOR).setScrollFactor(PARALLAX.mid);
+    this.transitionLayer = this.add.container(0, 0).setDepth(DEPTH_OBSTACLE - 1).setScrollFactor(PARALLAX.mid);
     this.groundLayer = this.add.container(0, 0).setDepth(DEPTH_GROUND).setScrollFactor(PARALLAX.ground);
     // 玩法层（scrollFactor 1.0）— 容器为组织用，实体仍直接挂场景根以保证 Y-sort 生效。
     this.add.container(0, 0).setDepth(DEPTH_ENTITY_BASE).setScrollFactor(PARALLAX.gameplay);
@@ -300,8 +453,17 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // ── 第 1 层：远景厂区/烟囱/塔架 ──
     if (this.textures.exists(FAR_CITY_TEXTURE)) {
       const far = this.add.image(W / 2, FAR_HORIZON_Y, FAR_CITY_TEXTURE);
-      far.setOrigin(0.5, 1); // 建筑底部对齐地平线
+      far.setOrigin(0.5, 1);
+      far.setAlpha(FAR_VISUAL_POLICY.alpha);
+      far.setTint(0xd3d9d8);
       this.farLayer.add(far);
+      if (this.textures.exists(FAR_CITY_SOFT_TEXTURE)) {
+        const softFar = this.add.image(W / 2, FAR_HORIZON_Y, FAR_CITY_SOFT_TEXTURE);
+        softFar.setOrigin(0.5, 1);
+        softFar.setAlpha(FAR_VISUAL_POLICY.softOverlayAlpha);
+        softFar.setTint(0xc7d0cf);
+        this.farLayer.add(softFar);
+      }
     } else if (DEBUG_HITBOX) {
       // 调试占位：浅灰矩形条带
       this.farLayer.add(this.add.rectangle(W / 2, FAR_HORIZON_Y, W, 200, 0xa8adb5, 0.6).setOrigin(0.5, 1));
@@ -309,14 +471,52 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // ── 第 2 层：中景废墟/管线/电杆 ──
     if (this.textures.exists(MID_BUILDINGS_TEXTURE)) {
-      const mid = this.add.image(W / 2, MID_BOTTOM_Y, MID_BUILDINGS_TEXTURE);
+      const mid = this.add.image(MID_LAYER_PLACEMENT.x, MID_LAYER_PLACEMENT.baseY, MID_BUILDINGS_TEXTURE);
       mid.setOrigin(0.5, 1);
+      mid.setAlpha(STAGE_ONE_VISUALS.midAlpha);
+      mid.setScrollFactor(MID_LAYER_PLACEMENT.scrollX, MID_LAYER_PLACEMENT.scrollY);
       this.midLayer.add(mid);
     } else if (DEBUG_HITBOX) {
       this.midLayer.add(this.add.rectangle(W / 2, MID_BOTTOM_Y, W, 260, 0x5a6b63, 0.6).setOrigin(0.5, 1));
     }
 
     // ── 第 3 层：地面 + 障碍物（scrollFactor=1） ──
+    const atmosphereTop = H * 0.38;
+    const atmosphereHeight = H * 0.32;
+    for (const band of [
+      { y: atmosphereTop + atmosphereHeight * 0.16, alpha: FAR_ATMOSPHERE.topAlpha },
+      { y: atmosphereTop + atmosphereHeight * 0.5, alpha: FAR_ATMOSPHERE.middleAlpha },
+      { y: atmosphereTop + atmosphereHeight * 0.84, alpha: FAR_ATMOSPHERE.bottomAlpha },
+    ]) {
+      const fog = this.add.rectangle(W / 2, band.y, W, atmosphereHeight * 0.34, 0x9ba8a8, band.alpha);
+      fog.setDepth(DEPTH_FAR + 1); fog.setScrollFactor(PARALLAX.far); this.farLayer.add(fog);
+    }
+    const transitionY = H * (TRANSITION_BAND.topRatio + TRANSITION_BAND.heightRatio * 0.5);
+    if (this.textures.exists(INDUSTRIAL_RUINS_TEXTURE)) {
+      const ruins = this.add.image(W * 0.5, transitionY, INDUSTRIAL_RUINS_TEXTURE);
+      ruins.setOrigin(0.5, 0.5); ruins.setDisplaySize(W * 0.92, H * 0.24);
+      ruins.setAlpha(0.86); ruins.setTint(0x87908c); ruins.setDepth(DEPTH_DECOR + 10);
+      ruins.setScrollFactor(PARALLAX.mid); this.transitionLayer.add(ruins);
+    }
+    // 用多段半透明雾带覆盖中景顶部的素材边缘，避免出现一条可识别的矩形拼接线。
+    const blendTop = H * 0.30;
+    const blendHeight = H * 0.38;
+    for (let index = 0; index < 9; index += 1) {
+      const progress = index / 8;
+      const blend = this.add.rectangle(
+        W / 2,
+        blendTop + blendHeight * (0.06 + progress * 0.88),
+        W,
+        blendHeight * 0.2,
+        0x7f8a87,
+        0.16 + progress * 0.48,
+      );
+      blend.setDepth(DEPTH_DECOR + 12);
+      blend.setScrollFactor(PARALLAX.mid);
+      this.transitionLayer.add(blend);
+    }
+    this.createContinuityAnchor(W, H);
+
     const GROUND_BAND_HEIGHT = WORLD_BOUNDS.height - WALKABLE_Y_MIN;
     if (this.textures.exists(GROUND_TILE_TEXTURE)) {
       const groundTile = this.add.tileSprite(
@@ -366,7 +566,11 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // ── 第 5 层：前景遮挡 ──
     if (this.textures.exists(FOREGROUND_TEXTURE)) {
       const fg = this.add.image(W / 2, FOREGROUND_ANCHOR_Y, FOREGROUND_TEXTURE);
-      fg.setOrigin(0.5, 1); // 底边对齐锚点
+      fg.setOrigin(0.5, 1);
+      const policy = foregroundPolicy(W);
+      fg.setAlpha(policy.alpha);
+      fg.setDepth(DEPTH_FOREGROUND);
+      fg.setScrollFactor(1); // 底边对齐锚点
       this.foregroundLayer.add(fg);
     } else if (DEBUG_HITBOX) {
       this.foregroundLayer.add(
@@ -380,112 +584,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
     // 绿植装饰簇 — 场景装饰，不参与任务判定
     this.createDecorPlants();
 
-    // ── 玩家 — 站立在可行走纵深带中部 ──
-    const character = usePlayerStore.getState().character;
-    const gender = character?.gender;
-    // 玩家脚底对齐纵深带中部；直接挂场景根（不放入任何 Container，保证 Y-sort 生效）
-    this.player = new Player(this, W / 2, (WALKABLE_Y_MIN + WALKABLE_Y_MAX) / 2, '生态修复员', gender ?? undefined);
-
-    // 玩家与障碍物碰撞
-    this.physics.add.collider(this.player.gameObject, this.obstacles);
-
-    // 交互对象
-    this.createInteractionObjects();
-
-    // NPC
-    this.createNpcs();
-
-    // 修复控制器初始化
-    this.restorationController = new RestorationController(POLLUTION_ZONE_01_TARGET);
-
-    // 每日任务进度信号监听
-    this.setupDailyTaskListeners();
-
-    // 昼夜和天气视觉控制器初始化
-    this.dayNightController = new DayNightVisualController(this);
-    this.weatherController = new WeatherVisualController(this);
-
-    // 初始化世界状态（时间 + 天气）
-    this.initWorldState();
-
-    // 初始化每日任务（在 worldStore 初始化之后，确保天气时间线可用）
-    useDailyTaskStore.getState().init();
-
-    // 交互提示文本（跟随摄像机）
-    this.interactionHintText = this.add
-      .text(W / 2, H - 120, '', {
-        fontSize: '16px',
-        color: '#27d7c4',
-        backgroundColor: 'rgba(8, 23, 26, 0.86)',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(DEPTH_UI);
-    this.interactionHintText.setVisible(false);
-
-    // 地图名称（固定在画面上方）
-    this.add
-      .text(W / 2, 30, V0_1_MAIN_MAP_IDENTITY.displayName, {
-        fontSize: '18px',
-        color: '#27d7c4',
-        backgroundColor: 'rgba(8, 23, 26, 0.86)',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(DEPTH_UI);
-
-    // 摄像机
-    this.cameras.main.setBounds(0, 0, W, H);
-    this.cameras.main.startFollow(
-      this.player.gameObject,
-      true,
-      CAMERA_FOLLOW.lerpX,
-      CAMERA_FOLLOW.lerpY,
-    );
-    this.cameras.main.setZoom(1);
-
-    // 输入
-    this.setupInput();
-
-    // 订阅 UI 输入模式变化
-    this.setupInputModeSubscription();
-
-    // 根据已有环境状态恢复视觉阶段
-    this.restoreVisualStage();
-
-    // 显式绑定 Phaser Scene 生命周期事件 — 不能假设定义 shutdown() 就会被自动调用
-    this.events.once(
-      Phaser.Scenes.Events.SHUTDOWN,
-      this.handleSceneCleanup,
-      this,
-    );
-    this.events.once(
-      Phaser.Scenes.Events.DESTROY,
-      this.handleSceneCleanup,
-      this,
-    );
-
-    // 注册 VISUAL_STAGE_CHANGED 前先取消旧订阅，防止重复注册
-    this.unsubscribeVisualStage?.();
-    this.unsubscribeVisualStage = gameBridge.on('VISUAL_STAGE_CHANGED', (payload) => {
-      // 只允许当前未销毁、活跃的 Scene 处理
-      if (
-        this.isShutdown ||
-        !this.sys.isActive() ||
-        this.cleanupCompleted
-      ) {
-        return;
-      }
-      this.applyVisualStage(payload.stage);
-    });
-
-    // 通知 React 层场景已就绪
-    gameBridge.emit('GAME_READY', { mapId: V0_1_MAIN_MAP_IDENTITY.id });
   }
 
   update(_time: number, delta: number): void {
+    this.demoBackdrop?.update(delta, this.input.activePointer.worldX, this.input.activePointer.worldY, this.player.gameObject.x, this.player.gameObject.y);
     this.handlePlayerMovement();
     this.updateInteractions();
     this.updateRestoration(delta);
@@ -522,6 +624,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
     if (this.cleanupCompleted) return;
     this.cleanupCompleted = true;
     this.isShutdown = true;
+    this.events.off(Phaser.Scenes.Events.RESUME, this.refreshGovernanceVisuals, this);
 
     // 强制中断修复
     if (this.restorationController) {
@@ -552,6 +655,11 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.weatherController?.destroy();
     this.weatherController = null;
 
+    this.demoBackdrop?.destroy();
+    this.demoBackdrop = null;
+    this.npcShadows.forEach(shadow => shadow.destroy());
+    this.npcShadows = [];
+
     // 重置世界状态
     useWorldStore.getState().resetWorld();
 
@@ -565,6 +673,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.interactionZones = [];
 
     // 销毁 NPC
+    for (const marker of this.taskMarkers.values()) marker.destroy();
+    this.taskMarkers.clear();
     this.npcEntities.forEach((npc) => {
       npc.label.destroy();
       npc.physBody.destroy();
@@ -641,18 +751,23 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * 2.5D 改造：分布到可行走纵深带内错落站位，参与 Y-sort 遮挡；
    * 直接挂场景根。
    */
+  private createContinuityAnchor(width: number, height: number): void {
+    const points = [
+      { ...CONTINUITY_ANCHOR.far, depth: DEPTH_FAR + 2, scroll: PARALLAX.far, color: 0x667674 },
+      { ...CONTINUITY_ANCHOR.transition, depth: DEPTH_DECOR + 3, scroll: PARALLAX.mid, color: 0x596966 },
+      { ...CONTINUITY_ANCHOR.mid, depth: DEPTH_GROUND + 2, scroll: PARALLAX.ground, color: 0x3f514d },
+    ];
+    for (const point of points) {
+      const line = this.add.rectangle(width * point.xRatio, height * point.yRatio, width * point.widthRatio, Math.max(8, height * 0.012), point.color, point.alpha);
+      line.setAngle(-7); line.setDepth(point.depth); line.setScrollFactor(point.scroll); this.transitionLayer.add(line);
+    }
+  }
+
   private createDecorPlants(): void {
     if (!this.textures.exists(DECOR_PLANT_TEXTURE)) return;
 
     // 带内错落分布（前中后排），底部对齐
-    const positions = [
-      { x: 200, y: 730, scale: 0.3 },
-      { x: 550, y: 1010, scale: 0.35 },
-      { x: 1000, y: 745, scale: 0.3 },
-      { x: 1600, y: 990, scale: 0.32 },
-      { x: 120, y: 950, scale: 0.28 },
-      { x: 1820, y: 780, scale: 0.26 },
-    ];
+    const positions = DECOR_PLACEMENTS.filter((p) => p.enabled).map((p) => ({ x: p.x, y: p.baseY, scale: Math.min(0.32, p.visibleHeight / 500) }));
 
     for (const pos of positions) {
       const plant = this.add.image(pos.x, pos.y, DECOR_PLANT_TEXTURE);
@@ -663,17 +778,43 @@ export class UrbanWastelandScene extends Phaser.Scene {
     }
   }
 
+  private markerKind(type: string): 'repair' | 'inspect' | 'patrol' | 'hazard' {
+    if (type === 'damaged_environment' || type === 'restoration_zone') return 'repair';
+    if (type === 'ecology_patrol_point') return 'patrol';
+    if (type === 'fog_hazard_point') return 'hazard';
+    return 'inspect';
+  }
+
   private createInteractionObjects(): void {
-    for (const config of INTERACTION_OBJECTS) {
-      const zone = new InteractionZone(this, config);
+    for (const config of (DEMO_SCENE.enabled ? demoInteractionObjects(INTERACTION_OBJECTS) : INTERACTION_OBJECTS)) {
+      const zone = new InteractionZone(this, config.type === 'damaged_environment'
+        ? { ...config, restoredTextureKey: SCENE_TEXTURE_KEYS.restoredPlantsLarge, displayHeight: 90 }
+        : config);
+      if (!DEMO_SCENE.enabled && isRemoteDamagedEnvironment(config.id)) {
+        const visual = remoteInteractionVisual(config);
+        const gameObject = zone.getGameObject();
+        if (gameObject) {
+          gameObject.setScale(visual.scale);
+          gameObject.setAlpha(visual.alpha);
+          gameObject.setDepth(entityDepth(config.y));
+          gameObject.setScrollFactor(1);
+          zone.setVisualVisible(true);
+        }
+      }
       // Y-sort 深度（构造器内已设置，此处显式调用以保证一致）
       zone.updateDepth();
       this.interactionZones.push(zone);
+      const kind = this.markerKind(config.type);
+      const marker = new TaskMarker(this);
+      marker.setState(config.x, config.y - config.height / 2 - 14, kind, false, 0);
+      marker.setVisible(zone.visualVisible);
+      this.taskMarkers.set(config.id, marker);
     }
   }
 
   private createNpcs(): void {
-    for (const config of NPC_DEFINITIONS) {
+    for (const config of (DEMO_SCENE.enabled ? demoNpcDefinitions(NPC_DEFINITIONS) : NPC_DEFINITIONS)) {
+      const displayHeight = DEMO_SCENE.enabled ? demoActorHeight(config.y) : NPC_DISPLAY_HEIGHT;
       const texKey = NPC_TEXTURE_KEYS[config.id];
       const hasTexture = texKey && this.textures.exists(texKey);
 
@@ -687,7 +828,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
         if (texture && texture.source[0]) {
           const sourceHeight = texture.source[0].height;
           if (sourceHeight > 0) {
-            img.setScale(NPC_DISPLAY_HEIGHT / sourceHeight);
+            img.setScale(displayHeight / sourceHeight);
           }
         }
         // 原点设在底部中心，使脚底对齐地面
@@ -733,7 +874,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
       // 标签位置 — 在立绘头顶上方，不遮挡人物主体
       const labelY = hasTexture
-        ? config.y - NPC_DISPLAY_HEIGHT - 8
+        ? config.y - displayHeight - 8
         : config.y - config.height / 2 - 15;
       const label = this.add.text(
         config.x,
@@ -748,7 +889,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
       );
       label.setOrigin(0.5);
       label.setDepth(DEPTH_ENTITY_LABEL);
+      label.setVisible(false);
 
+      this.npcShadows.push(new ContactShadow(this, config.x, config.y - 2, displayHeight * 0.3, 9));
       this.npcEntities.push({
         config,
         gameObject: visualObj,
@@ -819,55 +962,31 @@ export class UrbanWastelandScene extends Phaser.Scene {
     const playerX = this.player.gameObject.x;
     const playerY = this.player.gameObject.y;
     const currentWeather = useWorldStore.getState().getDisplayWeather();
-
-    // 检查交互对象
-    let nearestAvailable: InteractionZone | null = null;
+    const governance = useGovernanceStore.getState();
+    const targetIds = new Set<string>();
+    if (governance.stage === 'monitoring' || governance.stage === 'verification') targetIds.add('interaction.monitoring_device_01');
+    if (governance.stage === 'cleanup') targetIds.add(POLLUTION_ZONE_INTERACTION_ID);
+    if (governance.stage === 'repair') {
+      if (!governance.completedPointIds.includes('repair.soil')) targetIds.add('interaction.damaged_env_01');
+      if (!governance.completedPointIds.includes('repair.water')) targetIds.add('interaction.damaged_env_02');
+    }
+    const candidates = [] as Array<{ id: string; distance: number; range: number; eligible: boolean; priority: number }>;
     let pollutionZoneInRange = false;
+
     for (const zone of this.interactionZones) {
-      const changed = zone.checkAvailability(playerX, playerY);
-      if (changed) {
-        if (zone.available) {
-          gameBridge.emit('INTERACTION_AVAILABLE', {
-            objectId: zone.config.id,
-            displayName: zone.config.displayName,
-            type: zone.config.type,
-            hint: '按 E 交互',
-          });
-        } else {
-          gameBridge.emit('INTERACTION_UNAVAILABLE', {
-            objectId: zone.config.id,
-          });
-        }
-      }
-      // 天气门控 — 排水设施在非雨天气不显示交互提示
-      if (zone.available && zone.config.id === 'interaction.drainage_facility_01') {
-        if (currentWeather !== 'light_rain' && currentWeather !== 'heavy_rain') {
-          // 天气条件不满足，不作为可交互对象
-          continue;
-        }
-      }
-      // 天气门控 — 雾天危险点在非雾天不显示交互提示
-      if (zone.available && (zone.config.id === 'interaction.fog_hazard_01' || zone.config.id === 'interaction.fog_hazard_02')) {
-        if (currentWeather !== 'fog') {
-          continue;
-        }
-      }
-      if (zone.available && !nearestAvailable) {
-        nearestAvailable = zone;
-      }
-      // 追踪污染物堆是否在范围内
-      if (zone.available && zone.config.id === POLLUTION_ZONE_INTERACTION_ID) {
-        pollutionZoneInRange = true;
-      }
+      zone.checkAvailability(playerX, playerY);
+      const dx = playerX - zone.config.x;
+      const dy = playerY - zone.config.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const weatherEligible = zone.config.id !== 'interaction.drainage_facility_01'
+        || currentWeather === 'light_rain' || currentWeather === 'heavy_rain';
+      const fogEligible = !zone.config.id.startsWith('interaction.fog_hazard_') || currentWeather === 'fog';
+      const eligible = zone.available && weatherEligible && fogEligible;
+      candidates.push({ id: zone.config.id, distance, range: zone.config.interactionRange, eligible, priority: zone.config.id === POLLUTION_ZONE_INTERACTION_ID ? 1 : 0 });
+      if (zone.available && zone.config.id === POLLUTION_ZONE_INTERACTION_ID) pollutionZoneInRange = true;
     }
+    this.restorationController?.setInRange(pollutionZoneInRange);
 
-    // 更新修复控制器的范围状态
-    if (this.restorationController) {
-      this.restorationController.setInRange(pollutionZoneInRange);
-    }
-
-    // 检查 NPC 交互范围
-    let nearestNpc: NpcEntity | null = null;
     for (const npc of this.npcEntities) {
       const dx = playerX - npc.config.x;
       const dy = playerY - npc.config.y;
@@ -875,68 +994,49 @@ export class UrbanWastelandScene extends Phaser.Scene {
       const wasAvailable = npc.isAvailable;
       npc.isAvailable = distance <= npc.config.interactionRange;
       if (npc.isAvailable !== wasAvailable) {
-        if (npc.isAvailable) {
-          gameBridge.emit('INTERACTION_AVAILABLE', {
-            objectId: npc.config.id,
-            displayName: npc.config.displayName,
-            type: 'npc_placeholder',
-            hint: '按 E 对话',
-          });
-        } else {
-          gameBridge.emit('INTERACTION_UNAVAILABLE', {
-            objectId: npc.config.id,
-          });
-        }
+        gameBridge.emit(npc.isAvailable ? 'INTERACTION_AVAILABLE' : 'INTERACTION_UNAVAILABLE', npc.isAvailable
+          ? { objectId: npc.config.id, displayName: npc.config.displayName, type: 'npc_placeholder', hint: '按 E 交互' }
+          : { objectId: npc.config.id });
       }
-      if (npc.isAvailable && !nearestNpc) {
-        nearestNpc = npc;
-      }
+      candidates.push({ id: npc.config.id, distance, range: npc.config.interactionRange, eligible: npc.isAvailable, priority: 2 });
     }
 
-    // 更新提示文本 — 修复中优先显示修复提示
+    const focus = resolveFocus(candidates, this.nearestInteractionId);
+    const previousId = this.nearestInteractionId;
+    this.nearestInteractionId = focus.id;
+    this.focusCanInteract = focus.canInteract;
+    const focusedNpc = this.npcEntities.find((npc) => npc.config.id === focus.id);
+    this.nearestIsNpc = Boolean(focusedNpc);
+    this.nearestNpcId = focusedNpc?.config.id ?? null;
+
+    for (const zone of this.interactionZones) {
+      const isTarget = targetIds.has(zone.config.id);
+      zone.setLabelVisible(zone.config.id === focus.id || isTarget);
+      const marker = this.taskMarkers.get(zone.config.id);
+      if (marker) {
+        marker.setState(zone.config.x, zone.config.y - zone.config.height / 2 - 14, this.markerKind(zone.config.type), zone.config.id === focus.id || isTarget, 0);
+        marker.setVisible(zone.visualVisible || isTarget);
+      }
+    }
+    for (const npc of this.npcEntities) npc.label.setVisible((npc.config.id === focus.id || (governance.stage === 'briefing' && npc.config.id === 'npc.engineer.lin')) && !useUIStore.getState().isNpcDialogOpen);
+
+    if (focus.id && focus.id !== previousId && focus.canInteract) {
+      const npc = this.npcEntities.find((item) => item.config.id === focus.id);
+      const zone = this.interactionZones.find((item) => item.config.id === focus.id);
+      gameBridge.emit('INTERACTION_AVAILABLE', npc
+        ? { objectId: npc.config.id, displayName: npc.config.displayName, type: 'npc_placeholder', hint: '按 E 交互' }
+        : { objectId: zone!.config.id, displayName: zone!.config.displayName, type: zone!.config.type, hint: '按 E 交互' });
+    } else if (!focus.id && previousId) {
+      gameBridge.emit('INTERACTION_UNAVAILABLE', { objectId: previousId });
+    }
+
+    // 隐藏 Phaser 提示，统一由 React InteractionPrompt 显示交互文案。
+    this.interactionHintText.setVisible(false);
     if (this.restorationController) {
-      const restorationStatus = this.restorationController.getStatus();
-      if (restorationStatus === 'in_progress' || restorationStatus === 'interrupted') {
-        // 修复进行中或中断时，显示修复相关提示
-        const hint = this.restorationController.getInteractionHint();
-        this.interactionHintText.setText(hint);
-        this.interactionHintText.setVisible(true);
-        this.nearestInteractionId = POLLUTION_ZONE_INTERACTION_ID;
-        this.nearestIsNpc = false;
-        this.nearestNpcId = null;
-        return;
+      const status = this.restorationController.getStatus();
+      if ((status === 'in_progress' || status === 'interrupted') && focus.id === POLLUTION_ZONE_INTERACTION_ID) {
+        this.interactionHintText.setText(this.restorationController.getInteractionHint());
       }
-    }
-
-    // NPC 优先于交互对象
-    if (nearestNpc) {
-      this.nearestInteractionId = nearestNpc.config.id;
-      this.nearestIsNpc = true;
-      this.nearestNpcId = nearestNpc.config.id;
-      this.interactionHintText.setText(
-        `${nearestNpc.config.displayName} — 按 E 对话`,
-      );
-      this.interactionHintText.setVisible(true);
-    } else if (nearestAvailable) {
-      // 根据修复状态和任务状态决定提示文本
-      let hint: string;
-      const display = nearestAvailable.config.displayName;
-      if (nearestAvailable.config.id === POLLUTION_ZONE_INTERACTION_ID) {
-        // 污染物堆 — 显示每日任务相关提示
-        hint = this.getPollutionZoneHint();
-      } else {
-        hint = '按 E 交互';
-      }
-      this.nearestInteractionId = nearestAvailable.config.id;
-      this.nearestIsNpc = false;
-      this.nearestNpcId = null;
-      this.interactionHintText.setText(`${display} — ${hint}`);
-      this.interactionHintText.setVisible(true);
-    } else {
-      this.nearestInteractionId = null;
-      this.nearestIsNpc = false;
-      this.nearestNpcId = null;
-      this.interactionHintText.setVisible(false);
     }
   }
 
@@ -948,34 +1048,13 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * - 已接取且未完成 → 按住 E 清理
    * - 已完成 → 已清理
    */
-  private getPollutionZoneHint(): string {
-    const restorationStatus = this.restorationController?.getStatus();
-    if (restorationStatus === 'in_progress') return '正在清理污染物堆';
-    if (restorationStatus === 'completed') return '污染物堆 — 已完成清理';
-    if (restorationStatus === 'interrupted') return '清理已暂停 — 按住 E 继续';
-
-    // 检查每日任务状态 — 通过 objectiveType 查找
-    const wasteTask = useDailyTaskStore.getState().tasks.find((t) => {
-      const def = findDailyTaskById(t.taskId);
-      return def?.objectiveType === 'collect_waste';
-    });
-
-    if (!wasteTask || wasteTask.status === 'available') {
-      return '污染物堆 — 请先向林工接取今日清理任务';
-    }
-
-    if (wasteTask.status === 'completed') {
-      return '污染物堆 — 已完成清理';
-    }
-
-    // active 或 waiting_condition
-    return '污染物堆 — 按住 E 清理';
-  }
 
   /**
    * 每帧更新修复行为。
    */
   private updateRestoration(delta: number): void {
+    // 固定治理主线由区域面板执行，不能同时启动旧的主地图按住 E 清理。
+    if (useGovernanceStore.getState().accepted) return;
     if (!this.restorationController) return;
 
     // 更新 E 键持续状态
@@ -994,7 +1073,16 @@ export class UrbanWastelandScene extends Phaser.Scene {
    */
   private handleEKeyDown(): void {
     // 修复中或非 gameplay 模式时，禁止检查交互
-    if (this.inputMode !== 'gameplay') return;
+    if (this.inputMode !== 'gameplay' || !this.focusCanInteract) return;
+
+    if (!this.nearestIsNpc && this.nearestInteractionId === 'interaction.monitoring_device_01') {
+      this.openDedicatedMap(this.nearestInteractionId);
+      return;
+    }
+    if (!this.nearestIsNpc && this.nearestInteractionId === POLLUTION_ZONE_INTERACTION_ID && useGovernanceStore.getState().accepted) {
+      this.openDedicatedMap(this.nearestInteractionId);
+      return;
+    }
 
     // 污染物堆交互 — 由每日任务状态控制
     if (
@@ -1035,7 +1123,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
           return;
         }
 
-        // 任务 active 或 waiting_condition — 修复由持续按住 E 驱动
+        // 仅 active 状态进入污染物处理专属地图；waiting_condition 仍停留在主地图。
+        if (wasteTask.status === 'active') {
+          this.openDedicatedMap('interaction.pollution_zone_01');
+        }
         return;
       }
     }
@@ -1057,7 +1148,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // 受损环境点交互
     if (this.nearestInteractionId && !this.nearestIsNpc && this.damagedEnvObjectIds.has(this.nearestInteractionId)) {
-      this.handleRestoreAreaInteraction(this.nearestInteractionId);
+      this.openRepairMap(this.nearestInteractionId);
       return;
     }
 
@@ -1191,27 +1282,6 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * 只有任务已接取时才能增加进度。
    * 同一环境点只能计入一次（通过 sourceId 防重复）。
    */
-  private handleRestoreAreaInteraction(objectId: string): boolean {
-    const def = findDailyTaskById('daily_restore_area');
-    if (!def) return false;
-
-    const tasks = useDailyTaskStore.getState().tasks;
-    const inst = tasks.find((t) => t.taskId === 'daily_restore_area');
-    if (!inst || inst.status !== 'active') {
-      this.emitInteractionFeedback(objectId, '请先向林工接取修复受损环境点任务。');
-      return true;
-    }
-
-    // 计入进度
-    gameBridge.emit('DAILY_TASK_PROGRESS_SIGNAL', {
-      objectiveType: def.objectiveType,
-      amount: 1,
-      sourceId: objectId,
-    });
-    this.emitInteractionFeedback(objectId, '已修复一处受损环境点。');
-    return true;
-  }
-
   /**
    * 处理生态巡查点交互。
    *
@@ -1252,6 +1322,33 @@ export class UrbanWastelandScene extends Phaser.Scene {
     });
   }
 
+  private openRepairMap(objectId: string): void {
+    if (!isRemoteDamagedEnvironment(objectId) || this.scene.isPaused()) return;
+    const player = this.player?.gameObject;
+    if (!player) return;
+    createRepairMapContext(SCENE_KEY, objectId, { x: player.x, y: player.y });
+    this.scene.launch(REMOTE_REPAIR_SCENE_KEY);
+    this.scene.pause();
+  }
+
+  private openDedicatedMap(objectId: string): void {
+    if (this.scene.isPaused()) return;
+    const zone = this.interactionZones.find((item) => item.config.id === objectId);
+    const targetMapId = zone?.config.targetMapId;
+    const map = targetMapId ? getDedicatedMapConfig(targetMapId) : undefined;
+    const player = this.player?.gameObject;
+    if (!zone || !map || !player) return;
+
+    createDedicatedMapContext({
+      sourceSceneKey: SCENE_KEY,
+      sourceMapId: V0_1_MAIN_MAP_IDENTITY.id,
+      interactionId: objectId,
+      targetMapId: map.id,
+      returnPosition: { x: player.x, y: player.y },
+    });
+    this.scene.launch(map.sceneKey);
+    this.scene.pause();
+  }
   private handleInteractionObject(objectId: string): void {
     const zone = this.interactionZones.find((z) => z.config.id === objectId);
     if (!zone) return;
@@ -1273,6 +1370,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * 场景重新初始化时调用。
    */
   private restoreVisualStage(): void {
+    if (useGovernanceStore.getState().accepted) {
+      this.refreshGovernanceVisuals();
+      return;
+    }
     const envStore = useEnvironmentStore.getState();
     const stage = envStore.visualStage;
     this.applyVisualStage(stage);
@@ -1292,6 +1393,30 @@ export class UrbanWastelandScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  /** 返回区域或读档后，根据持久化治理成果更新原地图。 */
+  private refreshGovernanceVisuals(): void {
+    if (this.isShutdown || this.cleanupCompleted) return;
+    const completed = useGovernanceStore.getState().completedPointIds;
+    const cleanupDone = completed.includes('cleanup.wastewater') && completed.includes('cleanup.leak');
+    const pollution = this.interactionZones.find(z => z.config.id === POLLUTION_ZONE_INTERACTION_ID);
+    if (cleanupDone && pollution && !pollution.isDestroyed) {
+      pollution.updateVisual({ restored: true, alpha: 0.9 });
+      pollution.setLabelText('污染源已处理');
+      this.addPlaceholderVegetation();
+    }
+    for (const [pointId, sourceId, title] of [
+      ['repair.soil', 'interaction.damaged_env_01', '土壤修复'],
+      ['repair.water', 'interaction.damaged_env_02', '水岸修复'],
+    ]) {
+      const zone = this.interactionZones.find(z => z.config.id === sourceId);
+      if (!zone || zone.isDestroyed) continue;
+      if (completed.includes(pointId)) zone.updateVisual({ restored: true, alpha: 1 });
+      zone.setLabelText(completed.includes(pointId) ? `${title} — 已完成` : `${title}点`);
+    }
+    const stage = useEnvironmentStore.getState().visualStage;
+    if (this.backgroundRect?.scene && stage !== 'polluted') this.backgroundRect.setFillStyle(0x314c32, stage === 'restored' ? 0.18 : 0.08);
   }
 
   /**
@@ -1359,7 +1484,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private addPlaceholderVegetation(): void {
     if (this.vegetationGraphics.length > 0) return;
 
-    const interactionObj = INTERACTION_OBJECTS.find(
+    const interactionObj = (DEMO_SCENE.enabled ? demoInteractionObjects(INTERACTION_OBJECTS) : INTERACTION_OBJECTS).find(
       (o) => o.id === POLLUTION_ZONE_INTERACTION_ID,
     );
     if (!interactionObj) return;
@@ -1517,11 +1642,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       // 暴雨垃圾仅在 heavy_rain 下可见和可交互
       if (config.id === 'interaction.storm_debris_01') {
         const visible = weather === 'heavy_rain';
-        const gameObject = zone.getGameObject();
-        if (gameObject && gameObject.scene) {
-          gameObject.setVisible(visible);
-          gameObject.setActive(visible);
-        }
+        zone.setVisualVisible(visible);
         if (!visible) {
           zone.forceUnavailable();
         }
@@ -1531,11 +1652,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
       // 雾天危险点仅在 fog 下可见和可交互
       if (config.id === 'interaction.fog_hazard_01' || config.id === 'interaction.fog_hazard_02') {
         const visible = weather === 'fog';
-        const gameObject = zone.getGameObject();
-        if (gameObject && gameObject.scene) {
-          gameObject.setVisible(visible);
-          gameObject.setActive(visible);
-        }
+        zone.setVisualVisible(visible);
         if (!visible) {
           zone.forceUnavailable();
         }
