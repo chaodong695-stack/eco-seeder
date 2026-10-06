@@ -21,6 +21,7 @@
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { useEnvironmentStore } from '@/store/environmentStore';
 import { useTaskStore } from '@/store/taskStore';
+import { useGovernanceStore } from '@/store/governanceStore';
 
 /**
  * 重置所有与一局游戏相关的临时状态。
@@ -33,6 +34,7 @@ import { useTaskStore } from '@/store/taskStore';
  * - localStorage 中对应的持久化数据
  */
 export function resetWorldSession(): void {
+  useGovernanceStore.getState().reset();
   // 重置每日任务 — 清除 localStorage + Store 状态 + contributedSources
   useDailyTaskStore.getState().resetDailyTasks();
 

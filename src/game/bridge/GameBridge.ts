@@ -130,6 +130,7 @@ export interface DailyTaskProgressSignalPayload {
 }
 
 export type GameBridgeEventMap = {
+  GOVERNANCE_RETURN_REQUEST: { region: import('@/domain/governance/governanceDefinitions').GovernanceRegion };
   GAME_READY: { mapId: string };
   PLAYER_INTERACT: { targetId: string };
   DUNGEON_STARTED: { dungeonId: string };

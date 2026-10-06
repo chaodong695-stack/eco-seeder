@@ -13,6 +13,8 @@ import { useDailyTaskStore } from '@/store/dailyTaskStore';
 import { findNpcById } from '@/game/npc/npcDefinitions';
 import { resolveDailyTaskDialog, type DailyTaskDialogAction, type DailyTaskDialogOption } from '@/game/npc/dailyTaskDialogResolver';
 import { gameBridge } from '@/game/bridge/GameBridge';
+import { useGovernanceStore } from '@/store/governanceStore';
+import { GOVERNANCE_STAGE_TEXT } from '@/domain/governance/governanceDefinitions';
 import styles from './NpcDialog.module.css';
 
 /** 每日任务 NPC ID 集合。 */
@@ -23,6 +25,7 @@ export function NpcDialog() {
   const setNpcDialogOpen = useUIStore((s) => s.setNpcDialogOpen);
 
   const dailyTasks = useDailyTaskStore((s) => s.tasks);
+  const governanceStage = useGovernanceStore(s => s.stage);
   const acceptDailyTask = useDailyTaskStore((s) => s.acceptTask);
   const dailyTaskNpcTasks = useDailyTaskStore((s) => s.getTasksByNpcId);
 
@@ -110,6 +113,13 @@ export function NpcDialog() {
           </button>
         </div>
         <div className={styles.dialogBody}>
+          {currentNpcId === 'npc.engineer.lin' && <div>
+            <p>旧工业区首轮治理：先监测发现问题，再处理污染源、修复环境，最后复测验收。</p>
+            <p>{GOVERNANCE_STAGE_TEXT[governanceStage].objective}</p>
+            {governanceStage === 'briefing' && <button className={`${styles.optionBtn} ${styles.optionAccept}`} onClick={() => {
+              useGovernanceStore.getState().acceptMission(); closeDialog();
+            }}>接取首轮治理任务</button>}
+          </div>}
           {dialog.lines.map((line, idx) => (
             <p key={idx} className={styles.dialogLine}>
               {line}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUIStore } from '@/store/uiStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { resetWorldSession } from '@/game/session/resetWorldSession';
+import { useGovernanceStore } from '@/store/governanceStore';
 import { playBgmByKey, getAudioManager } from '@/game/audio/audioManager';
 import { imageAssets } from '@/game/assets/assetManifest';
 import type { PlayerCharacterGender } from '@/types';
@@ -25,6 +26,7 @@ export function CharacterSelectPage() {
     // 产品规则：重新从开始页选择角色进入游戏 = 新一局
     selectCharacter(selected);
     resetWorldSession();
+    useGovernanceStore.getState().beginSession(selected);
 
     // 用户交互后解锁音频，切换到游戏 BGM
     getAudioManager().unlock();

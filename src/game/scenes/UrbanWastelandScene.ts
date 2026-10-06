@@ -25,6 +25,7 @@ import { Player } from '../entities/Player';
 import type { MovementInput } from '../entities/movementVector';
 import { InteractionZone } from '../interaction/InteractionZone';
 import { INTERACTION_OBJECTS, SCENE_TEXTURE_KEYS } from '../interaction/interactionObjects';
+import { useGovernanceStore } from '@/store/governanceStore';
 import {
   WORLD_BOUNDS,
   CAMERA_FOLLOW,
@@ -388,6 +389,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
     // 根据已有环境状态恢复视觉阶段
     this.restoreVisualStage();
+    this.events.on(Phaser.Scenes.Events.RESUME, this.refreshGovernanceVisuals, this);
 
     // 显式绑定 Phaser Scene 生命周期事件 — 不能假设定义 shutdown() 就会被自动调用
     this.events.once(
@@ -622,6 +624,7 @@ export class UrbanWastelandScene extends Phaser.Scene {
     if (this.cleanupCompleted) return;
     this.cleanupCompleted = true;
     this.isShutdown = true;
+    this.events.off(Phaser.Scenes.Events.RESUME, this.refreshGovernanceVisuals, this);
 
     // 强制中断修复
     if (this.restorationController) {
@@ -784,7 +787,9 @@ export class UrbanWastelandScene extends Phaser.Scene {
 
   private createInteractionObjects(): void {
     for (const config of (DEMO_SCENE.enabled ? demoInteractionObjects(INTERACTION_OBJECTS) : INTERACTION_OBJECTS)) {
-      const zone = new InteractionZone(this, config);
+      const zone = new InteractionZone(this, config.type === 'damaged_environment'
+        ? { ...config, restoredTextureKey: SCENE_TEXTURE_KEYS.restoredPlantsLarge, displayHeight: 90 }
+        : config);
       if (!DEMO_SCENE.enabled && isRemoteDamagedEnvironment(config.id)) {
         const visual = remoteInteractionVisual(config);
         const gameObject = zone.getGameObject();
@@ -957,6 +962,14 @@ export class UrbanWastelandScene extends Phaser.Scene {
     const playerX = this.player.gameObject.x;
     const playerY = this.player.gameObject.y;
     const currentWeather = useWorldStore.getState().getDisplayWeather();
+    const governance = useGovernanceStore.getState();
+    const targetIds = new Set<string>();
+    if (governance.stage === 'monitoring' || governance.stage === 'verification') targetIds.add('interaction.monitoring_device_01');
+    if (governance.stage === 'cleanup') targetIds.add(POLLUTION_ZONE_INTERACTION_ID);
+    if (governance.stage === 'repair') {
+      if (!governance.completedPointIds.includes('repair.soil')) targetIds.add('interaction.damaged_env_01');
+      if (!governance.completedPointIds.includes('repair.water')) targetIds.add('interaction.damaged_env_02');
+    }
     const candidates = [] as Array<{ id: string; distance: number; range: number; eligible: boolean; priority: number }>;
     let pollutionZoneInRange = false;
 
@@ -997,14 +1010,15 @@ export class UrbanWastelandScene extends Phaser.Scene {
     this.nearestNpcId = focusedNpc?.config.id ?? null;
 
     for (const zone of this.interactionZones) {
-      zone.setLabelVisible(zone.config.id === focus.id);
+      const isTarget = targetIds.has(zone.config.id);
+      zone.setLabelVisible(zone.config.id === focus.id || isTarget);
       const marker = this.taskMarkers.get(zone.config.id);
       if (marker) {
-        marker.setState(zone.config.x, zone.config.y - zone.config.height / 2 - 14, this.markerKind(zone.config.type), zone.config.id === focus.id, 0);
-        marker.setVisible(zone.visualVisible);
+        marker.setState(zone.config.x, zone.config.y - zone.config.height / 2 - 14, this.markerKind(zone.config.type), zone.config.id === focus.id || isTarget, 0);
+        marker.setVisible(zone.visualVisible || isTarget);
       }
     }
-    for (const npc of this.npcEntities) npc.label.setVisible(npc.config.id === focus.id && !useUIStore.getState().isNpcDialogOpen);
+    for (const npc of this.npcEntities) npc.label.setVisible((npc.config.id === focus.id || (governance.stage === 'briefing' && npc.config.id === 'npc.engineer.lin')) && !useUIStore.getState().isNpcDialogOpen);
 
     if (focus.id && focus.id !== previousId && focus.canInteract) {
       const npc = this.npcEntities.find((item) => item.config.id === focus.id);
@@ -1039,6 +1053,8 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * 每帧更新修复行为。
    */
   private updateRestoration(delta: number): void {
+    // 固定治理主线由区域面板执行，不能同时启动旧的主地图按住 E 清理。
+    if (useGovernanceStore.getState().accepted) return;
     if (!this.restorationController) return;
 
     // 更新 E 键持续状态
@@ -1058,6 +1074,15 @@ export class UrbanWastelandScene extends Phaser.Scene {
   private handleEKeyDown(): void {
     // 修复中或非 gameplay 模式时，禁止检查交互
     if (this.inputMode !== 'gameplay' || !this.focusCanInteract) return;
+
+    if (!this.nearestIsNpc && this.nearestInteractionId === 'interaction.monitoring_device_01') {
+      this.openDedicatedMap(this.nearestInteractionId);
+      return;
+    }
+    if (!this.nearestIsNpc && this.nearestInteractionId === POLLUTION_ZONE_INTERACTION_ID && useGovernanceStore.getState().accepted) {
+      this.openDedicatedMap(this.nearestInteractionId);
+      return;
+    }
 
     // 污染物堆交互 — 由每日任务状态控制
     if (
@@ -1345,6 +1370,10 @@ export class UrbanWastelandScene extends Phaser.Scene {
    * 场景重新初始化时调用。
    */
   private restoreVisualStage(): void {
+    if (useGovernanceStore.getState().accepted) {
+      this.refreshGovernanceVisuals();
+      return;
+    }
     const envStore = useEnvironmentStore.getState();
     const stage = envStore.visualStage;
     this.applyVisualStage(stage);
@@ -1364,6 +1393,30 @@ export class UrbanWastelandScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  /** 返回区域或读档后，根据持久化治理成果更新原地图。 */
+  private refreshGovernanceVisuals(): void {
+    if (this.isShutdown || this.cleanupCompleted) return;
+    const completed = useGovernanceStore.getState().completedPointIds;
+    const cleanupDone = completed.includes('cleanup.wastewater') && completed.includes('cleanup.leak');
+    const pollution = this.interactionZones.find(z => z.config.id === POLLUTION_ZONE_INTERACTION_ID);
+    if (cleanupDone && pollution && !pollution.isDestroyed) {
+      pollution.updateVisual({ restored: true, alpha: 0.9 });
+      pollution.setLabelText('污染源已处理');
+      this.addPlaceholderVegetation();
+    }
+    for (const [pointId, sourceId, title] of [
+      ['repair.soil', 'interaction.damaged_env_01', '土壤修复'],
+      ['repair.water', 'interaction.damaged_env_02', '水岸修复'],
+    ]) {
+      const zone = this.interactionZones.find(z => z.config.id === sourceId);
+      if (!zone || zone.isDestroyed) continue;
+      if (completed.includes(pointId)) zone.updateVisual({ restored: true, alpha: 1 });
+      zone.setLabelText(completed.includes(pointId) ? `${title} — 已完成` : `${title}点`);
+    }
+    const stage = useEnvironmentStore.getState().visualStage;
+    if (this.backgroundRect?.scene && stage !== 'polluted') this.backgroundRect.setFillStyle(0x314c32, stage === 'restored' ? 0.18 : 0.08);
   }
 
   /**

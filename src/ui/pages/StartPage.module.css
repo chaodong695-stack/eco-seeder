@@ -70,6 +70,10 @@
 .startButton:active { transform: translateY(-1px) scale(.985); }
 .buttonArrow { font-size: 22px; letter-spacing: 0; transition: transform .3s; }
 .startButton:hover .buttonArrow { transform: translate(4px, -4px); }
+.newGameButton { margin-top: 18px; padding: 10px 16px; color: #d2e4df; border: 1px solid #8dc7ad66; background: #10282bcc; }
+.newGameConfirm { margin-top: 12px; padding: 16px; max-width: 360px; border: 1px solid #8dc7ad; background: #10282bf2; }
+.newGameConfirm p { margin-bottom: 12px; }
+.newGameConfirm button { padding: 8px 12px; margin-right: 8px; color: #eaf7f1; background: #244d40; border: 1px solid #8dc7ad66; }
 .sectorLabel { margin-top: clamp(34px, 7vh, 74px); color: rgba(197, 215, 214, .6); font-size: 11px; letter-spacing: 3px; animation: fadeUp 1s 1.15s both; }
 .sectorLabel span { margin: 0 8px; color: #8dc7ad; }
 

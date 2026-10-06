@@ -14,7 +14,8 @@ import { WorldStatus } from '@/ui/components/WorldStatus';
 import { DailyTaskPanel, DailyTaskSummary } from '@/ui/components/DailyTaskPanel';
 import { CollapsibleRightHud } from '@/ui/components/CollapsibleRightHud';
 import { DevDebugPanel } from '@/ui/components/DevDebugPanel';
-import { resetWorldSession } from '@/game/session/resetWorldSession';
+import { useGovernanceStore } from '@/store/governanceStore';
+import { GovernancePanel } from '@/ui/components/GovernancePanel';
 import { getAudioManager, playSfxByKey, playBgmByKey } from '@/game/audio/audioManager';
 import { gameBridge } from '@/game/bridge/GameBridge';
 import { useDailyTaskStore } from '@/store/dailyTaskStore';
@@ -31,6 +32,7 @@ export function GamePage() {
   const isNpcDialogOpen = useUIStore((s) => s.isNpcDialogOpen);
   const isSettingsOpen = useUIStore((s) => s.isSettingsOpen);
   const errorMessage = useUIStore((s) => s.errorMessage);
+  const activeRegion = useGovernanceStore(s => s.activeRegion);
   const setError = useUIStore((s) => s.setError);
 
   // 监听 settingsStore 静音变化，同步到 AudioManager
@@ -87,6 +89,7 @@ export function GamePage() {
         clearTimeout(timer);
         instance.destroy();
         gameInstanceRef.current = null;
+        useGovernanceStore.getState().leaveRegion();
       };
     } catch (e) {
       const message = e instanceof Error ? e.message : '未知错误';
@@ -100,11 +103,7 @@ export function GamePage() {
       gameInstanceRef.current = null;
     }
     setIsReady(false);
-    // 重置所有世界状态 — 返回开始页视为结束当前局
-    // 重新选择角色进入时，resetWorldSession 会再次调用确保干净
-    // 但在此处调用可以防止 React 组件在卸载前读取旧状态
-    resetWorldSession();
-    useSettingsStore.getState().resetSettings();
+    useGovernanceStore.getState().leaveRegion();
 
     // 停止游戏 BGM，切换回开始页 BGM
     getAudioManager().stopBgm();
@@ -138,8 +137,8 @@ export function GamePage() {
       )}
 
       {isReady && <GameHud onReturnToStart={handleReturnToStart} characterName={character?.displayName} />}
-      {isReady && <WorldStatus />}
-      {isReady && (
+      {isReady && !activeRegion && <WorldStatus />}
+      {isReady && !activeRegion && (
         <CollapsibleRightHud
           environmentSummary={<EnvironmentStatusSummary />}
           environmentDetail={<EnvironmentStatusPanel />}
@@ -147,8 +146,9 @@ export function GamePage() {
           dailyTasksDetail={<DailyTaskPanel />}
         />
       )}
-      {isReady && <InteractionPrompt />}
-      {isReady && <RestorationProgress />}
+      {isReady && !activeRegion && <InteractionPrompt />}
+      {isReady && !activeRegion && <RestorationProgress />}
+      {isReady && <GovernancePanel />}
       {isReady && isTaskPanelOpen && <TaskPanel />}
       {isReady && isNpcDialogOpen && <NpcDialog />}
       {isReady && isSettingsOpen && <SettingsPanel />}

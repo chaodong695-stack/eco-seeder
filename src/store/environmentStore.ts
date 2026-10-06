@@ -61,6 +61,8 @@ interface EnvironmentStoreState {
   getVisualStage: () => RestorationVisualStage;
   /** 重置环境状态到初始值。 */
   resetEnvironment: () => void;
+  /** 从已验证的治理成果重建环境状态及幂等记录。 */
+  restoreEnvironmentSnapshot: (state: EnvironmentState, appliedTargetIds: string[]) => void;
 }
 
 /**
@@ -194,6 +196,13 @@ export const useEnvironmentStore = create<EnvironmentStoreState>((set, get) => (
 
   getVisualStage: (): RestorationVisualStage => {
     return get().visualStage;
+  },
+
+  restoreEnvironmentSnapshot: (state, appliedTargetIds) => {
+    const restored = { ...state };
+    const ids = new Set(appliedTargetIds);
+    set({ state: restored, appliedTargetIds: ids, visualStage: resolveVisualStage(restored) });
+    persistEnvironment(restored, ids);
   },
 
   resetEnvironment: (): void => {
